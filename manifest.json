@@ -1,0 +1,12 @@
+{
+  "name": "Figma Translator",
+  "id": "figma-translator",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "capabilities": [],
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://api.openai.com"]
+  }
+}

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            margin: 0;
+            background: #ffffff;
+            color: #333;
+        }
+
+        .container {
+            max-width: 360px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0 0 20px 0;
+            text-align: center;
+            color: #1f2937;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #374151;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            background: #ffffff;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+            max-height: 120px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px 16px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .result {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .result.success {
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+        }
+
+        .result.error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+        }
+
+        .instruction {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 16px;
+            padding: 8px;
+            background: #f9fafb;
+            border-radius: 4px;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 16px;
+            color: #6b7280;
+        }
+
+        .api-key-info {
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 Figma Translator</h1>
+        
+        <div class="instruction">
+            💡 <strong>Como usar:</strong> Selecione os elementos de texto que deseja traduzir no Figma, escolha o idioma de destino e clique em "Traduzir".
+        </div>
+
+        <form id="translationForm">
+            <div class="form-group">
+                <label for="apiKey">Chave da API OpenAI:</label>
+                <input type="password" id="apiKey" placeholder="sk-..." required>
+                <div class="api-key-info">
+                    🔒 Sua chave é armazenada apenas localmente e não é compartilhada
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="targetLanguage">Idioma de destino:</label>
+                <select id="targetLanguage" required>
+                    <option value="">Selecione um idioma</option>
+                    <option value="português">Português</option>
+                    <option value="português do Brasil">Português do Brasil</option>
+                    <option value="inglês">Inglês</option>
+                    <option value="espanhol">Espanhol</option>
+                    <option value="francês">Francês</option>
+                    <option value="alemão">Alemão</option>
+                    <option value="italiano">Italiano</option>
+                    <option value="japonês">Japonês</option>
+                    <option value="chinês">Chinês</option>
+                    <option value="coreano">Coreano</option>
+                    <option value="russo">Russo</option>
+                    <option value="árabe">Árabe</option>
+                    <option value="holandês">Holandês</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="customText">Texto personalizado (opcional):</label>
+                <textarea id="customText" placeholder="Deixe vazio para traduzir o texto selecionado no Figma"></textarea>
+            </div>
+
+            <button type="submit" id="translateBtn">
+                Traduzir Seleção
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            ⏳ Traduzindo...
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Salvar e carregar configurações usando Figma clientStorage
+        function saveSettings() {
+            const apiKey = document.getElementById('apiKey').value;
+            const targetLanguage = document.getElementById('targetLanguage').value;
+            
+            // Enviar para o código principal salvar no Figma storage
+            parent.postMessage({
+                pluginMessage: {
+                    type: 'save-settings',
+                    apiKey: apiKey,
+                    targetLanguage: targetLanguage
+                }
+            }, '*');
+            
+            console.log('📤 Enviando configurações para salvar no Figma storage');
+        }
+
+        function loadSettings() {
+            // Solicitar configurações do código principal
+            parent.postMessage({
+                pluginMessage: {
+                    type: 'load-settings'
+                }
+            }, '*');
+            
+            console.log('📥 Solicitando configurações do Figma storage');
+        }
+
+        // Carregar configurações ao iniciar
+        loadSettings();
+
+        // Form submission
+        document.getElementById('translationForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const apiKey = document.getElementById('apiKey').value;
+            const targetLanguage = document.getElementById('targetLanguage').value;
+            const customText = document.getElementById('customText').value;
+
+            if (!apiKey || !targetLanguage) {
+                showResult('Por favor, preencha todos os campos obrigatórios.', 'error');
+                return;
+            }
+
+            // Salvar configurações
+            saveSettings();
+
+            // Mostrar loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('translateBtn').disabled = true;
+            document.getElementById('result').innerHTML = '';
+
+            // Enviar mensagem para o código principal
+            parent.postMessage({
+                pluginMessage: {
+                    type: 'translate',
+                    text: customText,
+                    targetLanguage: targetLanguage,
+                    apiKey: apiKey
+                }
+            }, '*');
+        });
+
+        // Escutar mensagens do código principal
+        window.addEventListener('message', function(event) {
+            const msg = event.data.pluginMessage;
+            
+            if (msg.type === 'settings-loaded') {
+                // Preencher os campos com as configurações carregadas
+                if (msg.apiKey) {
+                    document.getElementById('apiKey').value = msg.apiKey;
+                    console.log('✅ API Key CARREGADA do Figma storage');
+                } else {
+                    console.log('⚠️ Nenhuma API Key salva encontrada');
+                }
+                
+                if (msg.targetLanguage) {
+                    document.getElementById('targetLanguage').value = msg.targetLanguage;
+                    console.log('✅ Idioma CARREGADO do Figma storage:', msg.targetLanguage);
+                } else {
+                    console.log('⚠️ Nenhum idioma salvo encontrado');
+                }
+            }
+            else if (msg.type === 'translation-result') {
+                // Esconder loading
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('translateBtn').disabled = false;
+                
+                showResult(`✅ Tradução concluída!\n\nTexto original: "${msg.originalText}"\nTradução: "${msg.translatedText}"`, 'success');
+            } 
+            else if (msg.type === 'error') {
+                // Esconder loading
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('translateBtn').disabled = false;
+                
+                showResult(`❌ ${msg.message}`, 'error');
+            }
+        });
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message.replace(/\n/g, '<br>');
+            resultDiv.className = `result ${type}`;
+        }
+    </script>
+</body>
+</html>
