@@ -129,62 +129,62 @@
         <h1>🌐 Figma Translator</h1>
         
         <div class="instruction">
-            💡 <strong>Como usar:</strong> Selecione os elementos de texto que deseja traduzir no Figma, escolha o idioma de destino e clique em "Traduzir".
+            💡 <strong>How to use:</strong> Select any elements in Figma (frames, groups, or individual texts). The plugin will automatically find all text elements within your selection, duplicate the containing frames, and apply translations to the copies while preserving the original design.
         </div>
 
         <form id="translationForm">
             <div class="form-group">
-                <label for="apiKey">Chave da API OpenAI:</label>
+                <label for="apiKey">OpenAI API Key:</label>
                 <input type="password" id="apiKey" placeholder="sk-..." required>
                 <div class="api-key-info">
-                    🔒 Sua chave é armazenada apenas localmente e não é compartilhada
+                    🔒 Your key is stored locally only and is not shared
                 </div>
             </div>
 
             <div class="form-group">
-                <label for="targetLanguage">Idioma de destino:</label>
+                <label for="targetLanguage">Target language:</label>
                 <select id="targetLanguage" required>
-                    <option value="">Selecione um idioma</option>
-                    <option value="português">Português</option>
-                    <option value="português do Brasil">Português do Brasil</option>
-                    <option value="inglês">Inglês</option>
-                    <option value="espanhol">Espanhol</option>
-                    <option value="francês">Francês</option>
-                    <option value="alemão">Alemão</option>
-                    <option value="italiano">Italiano</option>
-                    <option value="japonês">Japonês</option>
-                    <option value="chinês">Chinês</option>
-                    <option value="coreano">Coreano</option>
-                    <option value="russo">Russo</option>
-                    <option value="árabe">Árabe</option>
-                    <option value="holandês">Holandês</option>
+                    <option value="">Select a language</option>
+                    <option value="português">Portuguese</option>
+                    <option value="português do Brasil">Brazilian Portuguese</option>
+                    <option value="inglês">English</option>
+                    <option value="espanhol">Spanish</option>
+                    <option value="francês">French</option>
+                    <option value="alemão">German</option>
+                    <option value="italiano">Italian</option>
+                    <option value="japonês">Japanese</option>
+                    <option value="chinês">Chinese</option>
+                    <option value="coreano">Korean</option>
+                    <option value="russo">Russian</option>
+                    <option value="árabe">Arabic</option>
+                    <option value="holandês">Dutch</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="customText">Texto personalizado (opcional):</label>
-                <textarea id="customText" placeholder="Deixe vazio para traduzir o texto selecionado no Figma"></textarea>
+                <label for="customText">Custom text (optional):</label>
+                <textarea id="customText" placeholder="Leave empty to translate selected text in Figma"></textarea>
             </div>
 
             <button type="submit" id="translateBtn">
-                Traduzir Seleção
+                Duplicate and Translate
             </button>
         </form>
 
         <div class="loading" id="loading">
-            ⏳ Traduzindo...
+            ⏳ Translating...
         </div>
 
         <div id="result"></div>
     </div>
 
     <script>
-        // Salvar e carregar configurações usando Figma clientStorage
+        // Save and load settings using Figma clientStorage
         function saveSettings() {
             const apiKey = document.getElementById('apiKey').value;
             const targetLanguage = document.getElementById('targetLanguage').value;
             
-            // Enviar para o código principal salvar no Figma storage
+            // Send to main code to save in Figma storage
             parent.postMessage({
                 pluginMessage: {
                     type: 'save-settings',
@@ -193,21 +193,21 @@
                 }
             }, '*');
             
-            console.log('📤 Enviando configurações para salvar no Figma storage');
+            console.log('📤 Sending settings to save in Figma storage');
         }
 
         function loadSettings() {
-            // Solicitar configurações do código principal
+            // Request settings from main code
             parent.postMessage({
                 pluginMessage: {
                     type: 'load-settings'
                 }
             }, '*');
             
-            console.log('📥 Solicitando configurações do Figma storage');
+            console.log('📥 Requesting settings from Figma storage');
         }
 
-        // Carregar configurações ao iniciar
+        // Load settings on startup
         loadSettings();
 
         // Form submission
@@ -219,19 +219,19 @@
             const customText = document.getElementById('customText').value;
 
             if (!apiKey || !targetLanguage) {
-                showResult('Por favor, preencha todos os campos obrigatórios.', 'error');
+                showResult('Please fill in all required fields.', 'error');
                 return;
             }
 
-            // Salvar configurações
+            // Save settings
             saveSettings();
 
-            // Mostrar loading
+            // Show loading
             document.getElementById('loading').style.display = 'block';
             document.getElementById('translateBtn').disabled = true;
             document.getElementById('result').innerHTML = '';
 
-            // Enviar mensagem para o código principal
+            // Send message to main code
             parent.postMessage({
                 pluginMessage: {
                     type: 'translate',
@@ -242,35 +242,35 @@
             }, '*');
         });
 
-        // Escutar mensagens do código principal
+        // Listen to messages from main code
         window.addEventListener('message', function(event) {
             const msg = event.data.pluginMessage;
             
             if (msg.type === 'settings-loaded') {
-                // Preencher os campos com as configurações carregadas
+                // Fill fields with loaded settings
                 if (msg.apiKey) {
                     document.getElementById('apiKey').value = msg.apiKey;
-                    console.log('✅ API Key CARREGADA do Figma storage');
+                    console.log('✅ API Key LOADED from Figma storage');
                 } else {
-                    console.log('⚠️ Nenhuma API Key salva encontrada');
+                    console.log('⚠️ No saved API Key found');
                 }
                 
                 if (msg.targetLanguage) {
                     document.getElementById('targetLanguage').value = msg.targetLanguage;
-                    console.log('✅ Idioma CARREGADO do Figma storage:', msg.targetLanguage);
+                    console.log('✅ Language LOADED from Figma storage:', msg.targetLanguage);
                 } else {
-                    console.log('⚠️ Nenhum idioma salvo encontrado');
+                    console.log('⚠️ No saved language found');
                 }
             }
             else if (msg.type === 'translation-result') {
-                // Esconder loading
+                // Hide loading
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('translateBtn').disabled = false;
                 
-                showResult(`✅ Tradução concluída!\n\nTexto original: "${msg.originalText}"\nTradução: "${msg.translatedText}"`, 'success');
+                showResult(`✅ Translation completed!\n\nOriginal text: "${msg.originalText}"\nTranslation: "${msg.translatedText}"`, 'success');
             } 
             else if (msg.type === 'error') {
-                // Esconder loading
+                // Hide loading
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('translateBtn').disabled = false;
                 
