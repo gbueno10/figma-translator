@@ -5,7 +5,7 @@ Um plugin do Figma que usa ChatGPT para traduzir elementos de texto de forma rá
 ## ✨ Funcionalidades
 
 - **Tradução Automática**: Traduz textos selecionados no Figma usando a API do OpenAI
-- **Múltiplos Idiomas**: Suporte para 12+ idiomas incluindo português, inglês, espanhol, francês, alemão, japonês, chinês e mais
+- **Múltiplos Idiomas**: Suporte para 10 idiomas incluindo os principais (EN, DE, FR) e outros idiomas para anúncios (ES, PT, IT, NL, PL, RU, AR)
 - **Texto Personalizado**: Permite traduzir texto customizado além dos elementos selecionados
 - **Interface Intuitiva**: UI limpa e fácil de usar
 - **Configurações Salvas**: Lembra suas preferências de idioma e chave API (armazenadas localmente)
@@ -86,18 +86,17 @@ O arquivo `manifest.json` define as configurações do plugin:
 
 ## 🌍 Idiomas Suportados
 
-- Português
-- Inglês
-- Espanhol
-- Francês
-- Alemão
-- Italiano
-- Japonês
-- Chinês
-- Coreano
-- Russo
-- Árabe
-- Holandês
+- **English (EN)** - Inglês
+- **German (DE)** - Alemão
+- **French (FR)** - Francês
+- **Spanish (ES)** - Espanhol
+- **Portuguese (PT)** - Português
+- **Brazilian Portuguese (PT-BR)** - Português Brasileiro
+- **Italian (IT)** - Italiano
+- **Dutch (NL)** - Holandês
+- **Polish (PL)** - Polonês
+- **Russian (RU)** - Russo
+- **Arabic (AR)** - Árabe
 
 ## ⚠️ Requisitos
 
