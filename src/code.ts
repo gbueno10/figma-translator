@@ -75,37 +75,20 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       if (selectedNodes.length === 0) {
         figma.ui.postMessage({
           type: 'error',
-          message: 'Por favor, selecione pelo menos um elemento para traduzir.'
+          message: 'Por favor, selecione pelo menos um frame para traduzir.'
         } as ErrorMessage);
         return;
       }
 
-      // Lógica inteligente para identificar frames a serem duplicados
-      const framesToProcess = new Set<FrameNode>();
-      
-      for (const selectedNode of selectedNodes) {
-        if (selectedNode.type === 'FRAME' || selectedNode.type === 'COMPONENT' || selectedNode.type === 'INSTANCE') {
-          // Se é diretamente um frame/component/instance, adicionar
-          framesToProcess.add(selectedNode as FrameNode);
-        } else {
-          // Para outros tipos (elipse, grupo, texto, etc.), encontrar o frame pai
-          let parent = selectedNode.parent;
-          while (parent && parent.type !== 'FRAME' && parent.type !== 'COMPONENT' && parent.type !== 'INSTANCE') {
-            parent = parent.parent;
-          }
-          
-          if (parent && (parent.type === 'FRAME' || parent.type === 'COMPONENT' || parent.type === 'INSTANCE')) {
-            framesToProcess.add(parent as FrameNode);
-          }
-        }
-      }
-
-      const selectedFrames = Array.from(framesToProcess);
+      // Filtrar apenas nós do tipo FRAME, COMPONENT ou INSTANCE
+      const selectedFrames = selectedNodes.filter(node => 
+        node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE'
+      ) as FrameNode[];
 
       if (selectedFrames.length === 0) {
         figma.ui.postMessage({
           type: 'error',
-          message: 'Os elementos selecionados devem estar dentro de frames para serem traduzidos.'
+          message: 'Por favor, selecione pelo menos um frame, componente ou instância.'
         } as ErrorMessage);
         return;
       }
@@ -116,205 +99,121 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       const sourceFrame = selectedFrames[0];
       console.log(`🎯 Frame fonte definido: "${sourceFrame.name}"`);
 
-      // Passo 3: Extrair Textos Apenas do Frame Fonte
-      const textNodesInSource = sourceFrame.findAll(node => node.type === 'TEXT') as TextNode[];
-      
-      if (textNodesInSource.length === 0) {
+      // Passo 3: Extrair TODOS os textos de TODOS os frames selecionados usando IDs
+      const textsForApi: { [nodeId: string]: string } = {};
+      const allTextNodesById: { [nodeId: string]: TextNode } = {};
+
+      for (const frame of selectedFrames) {
+        const textNodes = frame.findAll(node => node.type === 'TEXT') as TextNode[];
+        for (const node of textNodes) {
+          if (node.characters.trim().length > 0) {
+            textsForApi[node.id] = node.characters;
+            allTextNodesById[node.id] = node;
+          }
+        }
+      }
+
+      if (Object.keys(textsForApi).length === 0) {
         figma.ui.postMessage({
           type: 'error',
-          message: 'Nenhum elemento de texto encontrado no frame fonte.'
+          message: 'Nenhum elemento de texto encontrado nos frames selecionados.'
         } as ErrorMessage);
         return;
       }
 
-      console.log(`📝 ${textNodesInSource.length} texto(s) encontrado(s) no frame fonte`);
+      console.log(`📝 ${Object.keys(textsForApi).length} texto(s) únicos encontrados para tradução`);
 
-      // Carregar fontes e coletar textos originais
-      const originalTexts: string[] = [];
-      
-      for (const textNode of textNodesInSource) {
-        try {
-          await figma.loadFontAsync(textNode.fontName as FontName);
-          console.log('✅ Fonte carregada:', textNode.fontName);
-        } catch (fontError) {
-          console.log('⚠️ Falha ao carregar fonte:', textNode.fontName, fontError);
-        }
-        
-        const originalText = msg.text || textNode.characters;
-        originalTexts.push(originalText);
+      // Carregar todas as fontes necessárias de uma vez
+      const fontsToLoad = new Set<FontName>();
+      for (const nodeId in allTextNodesById) {
+        fontsToLoad.add(allTextNodesById[nodeId].fontName as FontName);
+      }
+      try {
+        await Promise.all(Array.from(fontsToLoad).map(font => figma.loadFontAsync(font)));
+        console.log('✅ Todas as fontes necessárias foram carregadas.');
+      } catch (fontError) {
+        console.log('⚠️ Falha ao carregar uma ou mais fontes:', fontError);
+        figma.notify('Aviso: Algumas fontes não puderam ser carregadas, um fallback será usado.');
       }
 
-      // Passo 4: Preparar e Enviar para a API
-      let textToTranslate: string;
-      let isContextualTranslation = false;
-      
-      if (msg.text) {
-        // Se texto customizado foi fornecido, usar como está
-        textToTranslate = msg.text;
-        console.log('📝 Usando texto customizado fornecido');
-      } else if (originalTexts.length > 1) {
-        // Múltiplos textos: criar formato contextual
-        isContextualTranslation = true;
-        const textMap = originalTexts.map((text, index) => `[TEXT_${index}]: ${text}`).join('\n');
-        textToTranslate = `Please translate the following texts as a cohesive unit, understanding the context and relationship between them. Maintain the same structure and return each translation with its corresponding [TEXT_X] identifier:
-
-${textMap}`;
-        console.log('📝 Modo contextual com múltiplos textos');
-      } else {
-        // Texto único
-        textToTranslate = originalTexts[0];
-        console.log('📝 Modo texto único');
-      }
-      
+      // Passo 4: Preparar e Enviar para a API em formato JSON
       console.log('🌍 Iniciando tradução...');
-      console.log('📝 Texto para traduzir:', textToTranslate);
-      
-      const translatedText = await translateText(textToTranslate, msg.targetLanguage, msg.apiKey, isContextualTranslation);
+      const translatedTextsById = await translateTextsJson(textsForApi, msg.targetLanguage, msg.apiKey);
 
-      // Passo 5: Construir o "Mapa de Tradução"
-      const translationMap = new Map<string, string>();
-      
-      if (msg.text) {
-        // Se foi fornecido texto customizado, mapear para todos os textos originais
-        for (const originalText of originalTexts) {
-          translationMap.set(originalText, translatedText);
-        }
-        console.log('�️ Mapa de tradução criado para texto customizado');
-      } else if (isContextualTranslation) {
-        // Modo contextual: parsear a resposta para extrair traduções individuais
-        console.log('🔍 Parseando resposta contextual...');
-        console.log('📥 Resposta completa:', translatedText);
-        
-        // Padrão para extrair [TEXT_X]: tradução
-        const textPattern = /\[TEXT_(\d+)\]:\s*([\s\S]*?)(?=\[TEXT_\d+\]:|$)/g;
-        let match;
-        
-        while ((match = textPattern.exec(translatedText)) !== null) {
-          const index = parseInt(match[1]);
-          let translation = match[2].trim();
-          
-          if (translation && index < originalTexts.length) {
-            translationMap.set(originalTexts[index], translation);
-            console.log(`📝 Mapeamento ${index}: "${originalTexts[index]}" -> "${translation}"`);
-          }
-        }
-        
-        // Método alternativo se o padrão principal falhar
-        if (translationMap.size === 0) {
-          console.log('⚠️ Parseamento principal falhou, tentando método alternativo...');
-          const lines = translatedText.split('\n');
-          let currentIndex = -1;
-          let currentTranslation = '';
-          
-          for (const line of lines) {
-            const textMatch = line.match(/\[TEXT_(\d+)\]:\s*(.*)/);
-            if (textMatch) {
-              // Salvar tradução anterior se existir
-              if (currentIndex >= 0 && currentTranslation.trim() && currentIndex < originalTexts.length) {
-                translationMap.set(originalTexts[currentIndex], currentTranslation.trim());
-                console.log(`📝 Alt-mapeamento ${currentIndex}: "${originalTexts[currentIndex]}" -> "${currentTranslation.trim()}"`);
-              }
-              // Iniciar nova tradução
-              currentIndex = parseInt(textMatch[1]);
-              currentTranslation = textMatch[2] || '';
-            } else if (currentIndex >= 0) {
-              // Continuar tradução anterior
-              currentTranslation += (currentTranslation ? '\n' : '') + line;
-            }
-          }
-          
-          // Salvar a última tradução
-          if (currentIndex >= 0 && currentTranslation.trim() && currentIndex < originalTexts.length) {
-            translationMap.set(originalTexts[currentIndex], currentTranslation.trim());
-            console.log(`📝 Alt-mapeamento ${currentIndex}: "${originalTexts[currentIndex]}" -> "${currentTranslation.trim()}"`);
-          }
-        }
-        
-        console.log(`📊 ${translationMap.size} traduções mapeadas de ${originalTexts.length} textos originais`);
-      } else {
-        // Texto único: mapear diretamente
-        if (originalTexts.length > 0) {
-          translationMap.set(originalTexts[0], translatedText);
-          console.log('🗺️ Mapa de tradução criado para texto único');
-        }
-      }
-
-      // Passo 6: Duplicar Todos os Frames e Aplicar as Traduções
-      const duplicatedFrames: FrameNode[] = [];
+      // Passo 5: Duplicar Todos os Frames e Aplicar as Traduções
+      const duplicatedFrames: SceneNode[] = [];
       const offsetX = 50; // Deslocamento horizontal para frames duplicados
-      
+
       console.log(`🔄 Iniciando duplicação e tradução de ${selectedFrames.length} frame(s)...`);
-      
+
       for (const frameToDuplicate of selectedFrames) {
         console.log(`📋 Duplicando frame: "${frameToDuplicate.name}"`);
-        
-        // a. Duplicar o frame
+
+        // a. Encontrar nós de texto originais ANTES de duplicar para manter a referência de ordem
+        const originalTextNodes = frameToDuplicate.findAll(node => node.type === 'TEXT') as TextNode[];
+
+        // b. Duplicar o frame
         const duplicatedFrame = frameToDuplicate.clone();
-        
-        // b. Posicionar e renomear o frame duplicado
+
+        // c. Posicionar e renomear o frame duplicado
         duplicatedFrame.x = frameToDuplicate.x + frameToDuplicate.width + offsetX;
-        duplicatedFrame.name = frameToDuplicate.name + ' (Translated)';
-        
-        // Adicionar o frame duplicado ao mesmo container do original
+        duplicatedFrame.name = `${frameToDuplicate.name} (${msg.targetLanguage})`;
+
+        // d. Adicionar o frame duplicado ao mesmo container do original
         if (frameToDuplicate.parent) {
           frameToDuplicate.parent.appendChild(duplicatedFrame);
         }
-        
         duplicatedFrames.push(duplicatedFrame);
-        
-        // c. Encontrar todos os nós de texto dentro deste novo frame duplicado
+
+        // e. Encontrar todos os nós de texto dentro do novo frame duplicado
         const textNodesInDuplicated = duplicatedFrame.findAll(node => node.type === 'TEXT') as TextNode[];
         console.log(`📝 ${textNodesInDuplicated.length} nó(s) de texto encontrado(s) no frame duplicado`);
-        
-        // d. Loop pelos nós de texto para aplicar traduções
-        for (const textNode of textNodesInDuplicated) {
-          // e. Fazer o "Match": usar o conteúdo como chave para buscar a tradução
-          const originalContent = textNode.characters;
-          const translatedContent = translationMap.get(originalContent);
-          
-          if (translatedContent) {
-            console.log(`🔄 Aplicando tradução: "${originalContent}" -> "${translatedContent}"`);
-            
-            // f. Aplicar a Tradução com fallback de fonte
-            try {
-              await figma.loadFontAsync(textNode.fontName as FontName);
-              textNode.characters = translatedContent;
-              console.log('✅ Tradução aplicada com fonte original');
-            } catch (fontError) {
-              console.log('⚠️ Falha ao carregar fonte original:', textNode.fontName, fontError);
+
+        // f. Mapear e aplicar traduções com base na ordem dos nós
+        if (originalTextNodes.length === textNodesInDuplicated.length) {
+          for (let i = 0; i < originalTextNodes.length; i++) {
+            const originalNode = originalTextNodes[i];
+            const duplicatedNode = textNodesInDuplicated[i];
+            const translatedContent = translatedTextsById[originalNode.id];
+
+            if (translatedContent) {
+              console.log(`🔄 Aplicando tradução para ID ${originalNode.id}: "${originalNode.characters}" -> "${translatedContent}"`);
               try {
-                await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-                textNode.fontName = { family: "Inter", style: "Regular" };
-                textNode.characters = translatedContent;
-                console.log('✅ Tradução aplicada com fonte fallback (Inter)');
-              } catch (fallbackError) {
-                console.log('❌ Falha ao aplicar fonte fallback, tentando sem mudança de fonte');
+                // A fonte já foi carregada, então isso deve ser rápido
+                await figma.loadFontAsync(duplicatedNode.fontName as FontName);
+                duplicatedNode.characters = translatedContent;
+              } catch (fontError) {
+                console.log(`⚠️ Falha ao carregar fonte para o nó duplicado: ${fontError}. Usando fallback.`);
                 try {
-                  textNode.characters = translatedContent;
-                  console.log('⚠️ Tradução aplicada sem mudança de fonte');
-                } catch (finalError) {
-                  console.log('❌ Falha completa ao aplicar tradução:', finalError);
+                  const fallbackFont: FontName = { family: "Inter", style: "Regular" };
+                  await figma.loadFontAsync(fallbackFont);
+                  duplicatedNode.fontName = fallbackFont;
+                  duplicatedNode.characters = translatedContent;
+                } catch (fallbackError) {
+                  console.log(`❌ Falha total ao aplicar tradução para o nó ${originalNode.id}: ${fallbackError}`);
                 }
               }
+            } else {
+              console.log(`⚠️ Nenhuma tradução encontrada para o ID: ${originalNode.id} ("${originalNode.characters}")`);
             }
-          } else {
-            console.log(`⚠️ Nenhuma tradução encontrada para: "${originalContent}"`);
           }
+        } else {
+          console.log(`❌ Erro: A contagem de nós de texto no frame original e duplicado não corresponde. Frame: "${frameToDuplicate.name}"`);
         }
       }
-      
-      // Passo 7: Finalizar e Notificar o Usuário
+
+      // Passo 6: Finalizar e Notificar o Usuário
       if (duplicatedFrames.length > 0) {
         // Atualizar seleção para mostrar os frames traduzidos
         figma.currentPage.selection = duplicatedFrames;
-        
+
         figma.ui.postMessage({
           type: 'translation-result',
-          translatedText: translatedText,
-          originalText: textToTranslate
+          translatedText: JSON.stringify(translatedTextsById, null, 2),
+          originalText: JSON.stringify(textsForApi, null, 2)
         } as TranslationResponse);
-        
-        figma.notify(`✅ Tradução concluída! ${duplicatedFrames.length} frame(s) duplicado(s) e traduzido(s) com uma única chamada da API.`);
+
+        figma.notify(`✅ Tradução concluída! ${duplicatedFrames.length} frame(s) duplicado(s) e traduzido(s).`);
         console.log(`🎉 Processo finalizado com sucesso: ${duplicatedFrames.length} frame(s) traduzido(s)`);
       } else {
         throw new Error('Nenhum frame foi duplicado com sucesso');
@@ -330,50 +229,44 @@ ${textMap}`;
 };
 
 // Function to translate text using OpenAI API
-async function translateText(text: string, targetLanguage: string, apiKey: string, isContextual: boolean = false): Promise<string> {
-  console.log('🚀 Starting translation with GPT-5...');
-  console.log('📝 Text length:', text.length);
+async function translateTextsJson(texts: { [nodeId: string]: string }, targetLanguage: string, apiKey: string): Promise<{ [nodeId: string]: string }> {
+  console.log('🚀 Starting JSON translation with GPT-5...');
+  console.log('📝 Text objects count:', Object.keys(texts).length);
   console.log('🌍 Target language:', targetLanguage);
-  console.log('🔗 Contextual mode:', isContextual);
-  
-  const systemPrompt = isContextual 
-    ? `You are a **transcreation and marketing copywriting expert**, specializing in adapting successful campaigns for the **${targetLanguage}** market. Your niche is dog training applications.
 
-Your mission is to adapt a set of related marketing texts so they sound as if they were originally crafted by a native speaker in ${targetLanguage}, for local dog owners.
+  const systemPrompt = `You are an expert marketing copywriter specializing in adapting UI/UX content for the ${targetLanguage} market.
+Your task is to translate a JSON object of texts from a user interface. The keys are unique identifiers, and the values are the strings to be translated.
 
-**KEY PRINCIPLE: NATURAL FEEL OVER LITERAL TRANSLATION**
-Always prioritize the phrase a native speaker would naturally use, even if it deviates from the literal translation. The goal is to capture the **intent** and **emotional impact**, not just the words.
+CRITICAL INSTRUCTIONS:
 
-**PRACTICAL EXAMPLE (EN to Spanish):**
-- **Original (EN):** "Level up your dog's obedience."
-- **Literal/Poor (ES):** "Sube de nivel la obediencia de tu perro." (Sounds robotic and unnatural)
-- **Ideal Transcreation (ES):** "Mejora la obediencia de tu perro." or "Lleva el adiestramiento de tu perro al siguiente nivel." (Natural and effective)
+Maintain JSON Structure: The input is a JSON object. Your output MUST be a valid JSON object with the EXACT SAME KEYS.
 
-**EXECUTION GUIDELINES:**
-1.  **Campaign Cohesion:** Analyze all texts ([TEXT_0], [TEXT_1], etc.) as a single unit. Maintain a consistent tone and terminology across them.
-2.  **Commercial Impact:** Preserve the original's persuasive effectiveness. The translation must drive clicks, engagement, and conversions.
-3.  **Brand Voice:** The tone is friendly, encouraging, and expert. Use language that builds an emotional connection with dog owners.
-4.  **Structure & Length:** Maintain the approximate structure and length of each [TEXT_X] to fit the original UI design.
-5.  **No Invention:** Do not add new information, benefits, or CTAs not present in the original.
+Contextual Translation: Analyze all the text values together to understand the domain (e.g., dog training app, e-commerce checkout, onboarding). Adapt translations so they fit naturally into the context.
 
-**MANDATORY OUTPUT FORMAT:**
-Return EACH translation with its corresponding [TEXT_X] identifier. Include absolutely no explanations, notes, or additional text. Only the formatted result.
+Consistency & Normalization: Ensure recurring terms (commands, buttons, features) are translated consistently across all values. Normalize terminology to match what a native speaker would expect in this specific domain.
 
-Example Output:
-[TEXT_0]: [Translated text 0]
-[TEXT_1]: [Translated text 1]`
-    : `You are a **transcreation and marketing copywriting expert**, adapting a successful text from a dog training app into **${targetLanguage}**.
+Natural & Persuasive Language: Do not translate literally. Write in a tone that feels natural, fluid, and engaging for a native ${targetLanguage} speaker.
 
-Your mission is to make this text sound as if it were crafted by a native copywriter in ${targetLanguage}, aiming to maximize engagement and persuasion.
+UI Constraints: Keep the translated text length similar to the original to avoid breaking the UI layout. Shorten or adapt if necessary while preserving clarity.
 
-**KEY PRINCIPLE: NATURAL FEEL OVER LITERAL TRANSLATION**
-Always prioritize the phrase a native speaker would naturally use, even if it deviates from the literal translation. The goal is to capture the **intent** and **emotional impact**, not just the words. 
+Output ONLY JSON: Do not include explanations, notes, or markdown formatting like \`\`\`json. Your entire response must be the raw JSON object.
 
-**MANDATORY OUTPUT FORMAT:**
-Deliver **only the translated text**. Do not add "Translation:", quotes, notes, or any other explanations.`;
+Example Input:
+{
+"ID_123:45": "Sign up for free",
+"ID_123:46": "Get started",
+"ID_123:47": "Already have an account? Log in."
+}
+
+Example Output (for "pt-BR"):
+{
+"ID_123:45": "Cadastre-se gratuitamente",
+"ID_123:46": "Começar agora",
+"ID_123:47": "Já tem uma conta? Entrar."
+}`;
 
   const requestBody = {
-    model: 'gpt-5',
+    model: 'gpt-5', // Using a model that is good with JSON
     messages: [
       {
         role: 'system',
@@ -381,15 +274,14 @@ Deliver **only the translated text**. Do not add "Translation:", quotes, notes, 
       },
       {
         role: 'user',
-        content: text
+        content: JSON.stringify(texts, null, 2)
       }
     ],
-    verbosity: 'medium',
-    reasoning_effort: 'minimal',
+    response_format: { type: "json_object" }, // Enable JSON mode
   };
-  
+
   console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
-  
+
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -401,7 +293,6 @@ Deliver **only the translated text**. Do not add "Translation:", quotes, notes, 
     });
 
     console.log('📥 Response status:', response.status);
-    console.log('📥 Response ok:', response.ok);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -412,18 +303,29 @@ Deliver **only the translated text**. Do not add "Translation:", quotes, notes, 
     const data = await response.json() as any;
     console.log('✅ GPT-5 successful');
     console.log('📊 Usage:', data.usage);
-    
-    const translatedContent = data.choices[0].message.content;
-    console.log('📝 Raw translation response:', translatedContent);
-    
-    if (!translatedContent || translatedContent.trim() === '') {
+
+    const translatedContentRaw = data.choices[0].message.content;
+    console.log('📝 Raw translation response:', translatedContentRaw);
+
+    if (!translatedContentRaw || translatedContentRaw.trim() === '') {
       throw new Error('Empty response from OpenAI API');
     }
-    
-    return translatedContent.trim();
-    
+
+    // Parse the JSON string response
+    const translatedJson = JSON.parse(translatedContentRaw);
+
+    // Validate if the response is an object
+    if (typeof translatedJson !== 'object' || translatedJson === null) {
+      throw new Error('API response is not a valid JSON object.');
+    }
+
+    return translatedJson;
+
   } catch (error) {
     console.log('❌ Network or parsing error:', error);
+    if (error instanceof SyntaxError) {
+      throw new Error("Failed to parse the translation response from the API. It wasn't valid JSON.");
+    }
     throw error;
   }
 }
