@@ -117,6 +117,28 @@
             color: #6b7280;
         }
 
+        .progress-container {
+            margin-top: 12px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 6px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            border-radius: 8px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            margin-top: 8px;
+            color: #374151;
+        }
+
         .api-key-info {
             font-size: 11px;
             color: #6b7280;
@@ -221,6 +243,10 @@
 
         <div class="loading" id="loading">
             ⏳ Translating...
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-text" id="progressText"></div>
         </div>
 
         <div id="result"></div>
@@ -279,12 +305,16 @@
             document.getElementById('loading').style.display = 'block';
             document.getElementById('translateBtn').disabled = true;
             document.getElementById('result').innerHTML = '';
+            
+            // Reset progress
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressText').textContent = 'Starting translation...';
 
             // Send message to main code
             parent.postMessage({
                 pluginMessage: {
                     type: 'translate',
-                    text: '', // Campo removido da UI, enviando string vazia
+                    text: '', // Field removed from UI, sending empty string
                     targetLanguages: targetLanguages,
                     apiKey: apiKey
                 }
@@ -317,6 +347,18 @@
                 } else {
                     console.log('⚠️ No saved languages found');
                 }
+            }
+            else if (msg.type === 'progress') {
+                // Update progress
+                const progressBar = document.getElementById('progressBar');
+                const progressText = document.getElementById('progressText');
+                
+                if (msg.step && msg.totalSteps) {
+                    const percentage = (msg.step / msg.totalSteps) * 100;
+                    progressBar.style.width = `${percentage}%`;
+                }
+                
+                progressText.textContent = msg.message;
             }
             else if (msg.type === 'translation-result') {
                 // Hide loading

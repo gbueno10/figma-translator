@@ -77,6 +77,13 @@ interface ErrorMessage {
   message: string;
 }
 
+interface ProgressMessage {
+  type: 'progress';
+  message: string;
+  step?: number;
+  totalSteps?: number;
+}
+
 // When the plugin is executed
 figma.showUI(__html__, { width: 400, height: 500 });
 
@@ -112,17 +119,17 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
   
   else if (msg.type === 'translate') {
     const startTime = Date.now();
-    console.log(`🚀 [${new Date().toISOString()}] Iniciando processo de tradução...`);
+    console.log(`🚀 [${new Date().toISOString()}] Starting translation process...`);
     
     try {
-      // Passo 1: Capturar e Validar a Seleção
-      console.log(`⏱️ [${Date.now() - startTime}ms] Passo 1: Iniciando captura da seleção...`);
+      // Step 1: Capture and Validate Selection
+      console.log(`⏱️ [${Date.now() - startTime}ms] Step 1: Starting selection capture...`);
       const selectedNodes = figma.currentPage.selection;
       
       if (selectedNodes.length === 0) {
         figma.ui.postMessage({
           type: 'error',
-          message: 'Por favor, selecione pelo menos um frame para traduzir.'
+          message: 'Please select at least one frame to translate.'
         } as ErrorMessage);
         return;
       }
@@ -135,22 +142,22 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       if (selectedFrames.length === 0) {
         figma.ui.postMessage({
           type: 'error',
-          message: 'Por favor, selecione pelo menos um frame, componente ou instância.'
+          message: 'Please select at least one frame, component or instance.'
         } as ErrorMessage);
         return;
       }
 
-      console.log(`📊 ${selectedFrames.length} frame(s) selecionado(s) para tradução`);
-      console.log(`✅ [${Date.now() - startTime}ms] Passo 1 concluído: Seleção validada`);
+      console.log(`📊 ${selectedFrames.length} frame(s) selected for translation`);
+      console.log(`✅ [${Date.now() - startTime}ms] Step 1 completed: Selection validated`);
 
-      // Passo 2: Definir o "Frame Fonte"
-      console.log(`⏱️ [${Date.now() - startTime}ms] Passo 2: Definindo frame fonte...`);
+      // Step 2: Define "Source Frame"
+      console.log(`⏱️ [${Date.now() - startTime}ms] Step 2: Defining source frame...`);
       const sourceFrame = selectedFrames[0];
-      console.log(`🎯 Frame fonte definido: "${sourceFrame.name}"`);
-      console.log(`✅ [${Date.now() - startTime}ms] Passo 2 concluído: Frame fonte definido`);
+      console.log(`🎯 Source frame defined: "${sourceFrame.name}"`);
+      console.log(`✅ [${Date.now() - startTime}ms] Step 2 completed: Source frame defined`);
 
-      // Passo 3: Extrair TODOS os textos de TODOS os frames selecionados usando IDs
-      console.log(`⏱️ [${Date.now() - startTime}ms] Passo 3: Iniciando extração de textos...`);
+      // Step 3: Extract ALL texts from ALL selected frames using IDs
+      console.log(`⏱️ [${Date.now() - startTime}ms] Step 3: Starting text extraction...`);
       const textsForApi: { [nodeId: string]: string } = {};
       const allTextNodesById: { [nodeId: string]: TextNode } = {};
 
@@ -167,114 +174,147 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       if (Object.keys(textsForApi).length === 0) {
         figma.ui.postMessage({
           type: 'error',
-          message: 'Nenhum elemento de texto encontrado nos frames selecionados.'
+          message: 'No text elements found in selected frames.'
         } as ErrorMessage);
         return;
       }
 
-      console.log(`📝 ${Object.keys(textsForApi).length} texto(s) únicos encontrados para tradução`);
-      console.log(`✅ [${Date.now() - startTime}ms] Passo 3 concluído: Textos extraídos`);
+      console.log(`📝 ${Object.keys(textsForApi).length} unique text(s) found for translation`);
+      console.log(`✅ [${Date.now() - startTime}ms] Step 3 completed: Texts extracted`);
 
-      // Carregar todas as fontes necessárias de uma vez
-      console.log(`⏱️ [${Date.now() - startTime}ms] Iniciando carregamento de fontes...`);
+      // Send progress to UI
+      figma.ui.postMessage({
+        type: 'progress',
+        message: `Found ${Object.keys(textsForApi).length} texts in ${selectedFrames.length} frame(s). Loading fonts...`,
+        step: 1,
+        totalSteps: 4
+      } as ProgressMessage);
+
+      // Load all necessary fonts at once
+      console.log(`⏱️ [${Date.now() - startTime}ms] Starting font loading...`);
       const fontsToLoad = new Set<FontName>();
       for (const nodeId in allTextNodesById) {
-        fontsToLoad.add(allTextNodesById[nodeId].fontName as FontName);
+        const textNode = allTextNodesById[nodeId];
+        const fontName = textNode.fontName as FontName;
+        
+        // Only add valid fonts to the set
+        if (fontName && fontName.family && fontName.style) {
+          fontsToLoad.add(fontName);
+        } else {
+          console.log(`⚠️ Skipping invalid font for node ${nodeId}: ${JSON.stringify(fontName)}`);
+        }
       }
-      console.log(`📝 ${fontsToLoad.size} fonte(s) únicas para carregar`);
+      console.log(`📝 ${fontsToLoad.size} unique font(s) to load`);
       
       try {
         await Promise.all(Array.from(fontsToLoad).map(font => figma.loadFontAsync(font)));
-        console.log(`✅ [${Date.now() - startTime}ms] Todas as fontes necessárias foram carregadas.`);
+        console.log(`✅ [${Date.now() - startTime}ms] All necessary fonts loaded.`);
+        
+        // Progress: fonts loaded
+        figma.ui.postMessage({
+          type: 'progress',
+          message: `Fonts loaded. Starting translation for ${msg.targetLanguages.length} language(s)...`,
+          step: 2,
+          totalSteps: 4
+        } as ProgressMessage);
       } catch (fontError) {
-        console.log(`⚠️ [${Date.now() - startTime}ms] Falha ao carregar uma ou mais fontes:`, fontError);
-        figma.notify('Aviso: Algumas fontes não puderam ser carregadas, um fallback será usado.');
+        console.log(`⚠️ [${Date.now() - startTime}ms] Failed to load one or more fonts:`, fontError);
+        figma.notify('Warning: Some fonts could not be loaded, a fallback will be used.');
       }
 
-      // Passo 4: Preparar e Traduzir para Cada Idioma EM PARALELO
-      console.log(`⏱️ [${Date.now() - startTime}ms] Passo 4: Iniciando tradução PARALELA para ${msg.targetLanguages.length} idioma(s)...`);
-      console.log('🌍 Iniciando tradução para múltiplos idiomas EM PARALELO...');
+      // Step 4: Prepare and Translate for Each Language IN PARALLEL
+      console.log(`⏱️ [${Date.now() - startTime}ms] Step 4: Starting PARALLEL translation for ${msg.targetLanguages.length} language(s)...`);
+      console.log('🌍 Starting translation for multiple languages IN PARALLEL...');
       
-      // Criar todas as promessas de tradução em paralelo
+      // Create all translation promises in parallel
       const translationPromises = msg.targetLanguages.map(async (language, index) => {
         const langStartTime = Date.now();
-        console.log(`🔄 [${Date.now() - startTime}ms] Iniciando tradução PARALELA para idioma ${index + 1}/${msg.targetLanguages.length}: ${language}`);
+        console.log(`🔄 [${Date.now() - startTime}ms] Starting PARALLEL translation for language ${index + 1}/${msg.targetLanguages.length}: ${language}`);
         
         const translatedTextsById = await translateTextsJson(textsForApi, language, msg.apiKey);
         
-        console.log(`✅ [${Date.now() - startTime}ms] Tradução PARALELA para ${language} concluída em ${Date.now() - langStartTime}ms`);
+        console.log(`✅ [${Date.now() - startTime}ms] PARALLEL translation for ${language} completed in ${Date.now() - langStartTime}ms`);
         return { language, translatedTextsById };
       });
 
-      // Aguardar todas as traduções completarem
-      console.log(`⏱️ [${Date.now() - startTime}ms] Aguardando ${msg.targetLanguages.length} traduções paralelas...`);
+      // Wait for all translations to complete
+      console.log(`⏱️ [${Date.now() - startTime}ms] Waiting for ${msg.targetLanguages.length} parallel translations...`);
       const translationResults = await Promise.all(translationPromises);
       
-      // Reorganizar resultados no formato esperado
+      // Reorganize results in expected format
       const translationsByLanguage: { [language: string]: { [nodeId: string]: string } } = {};
       for (const result of translationResults) {
         translationsByLanguage[result.language] = result.translatedTextsById;
       }
       
-      console.log(`✅ [${Date.now() - startTime}ms] Passo 4 concluído: Todas as traduções PARALELAS finalizadas`);
+      console.log(`✅ [${Date.now() - startTime}ms] Step 4 completed: All PARALLEL translations finished`);
 
-      // Passo 5: Duplicar e Organizar Frames em Layout Vertical (Uma linha por idioma, abaixo dos originais)
-      console.log(`⏱️ [${Date.now() - startTime}ms] Passo 5: Iniciando duplicação em layout vertical...`);
+      // Progress: translations completed
+      figma.ui.postMessage({
+        type: 'progress',
+        message: `Translations completed. Duplicating and organizing ${selectedFrames.length} frame(s)...`,
+        step: 3,
+        totalSteps: 4
+      } as ProgressMessage);
+
+      // Step 5: Duplicate and Organize Frames in Vertical Layout (One row per language, below originals)
+      console.log(`⏱️ [${Date.now() - startTime}ms] Step 5: Starting vertical layout duplication...`);
       const duplicatedFrames: SceneNode[] = [];
-      const spacingY = 100; // Espaçamento vertical entre linhas de idiomas
+      const spacingY = 100; // Vertical spacing between language rows
+      let failedFonts = new Set<string>(); // Register fonts that failed
       
-      console.log(`🔄 Iniciando duplicação vertical: ${selectedFrames.length} frame(s) x ${msg.targetLanguages.length} idioma(s)`);
+      console.log(`🔄 Starting vertical duplication: ${selectedFrames.length} frame(s) x ${msg.targetLanguages.length} language(s)`);
 
-      // Calcular a posição Y base (abaixo do frame mais baixo)
+      // Calculate base Y position (below the lowest frame)
       const maxBottomY = Math.max(...selectedFrames.map(frame => frame.y + frame.height));
-      console.log(`📐 Posição Y base calculada: ${maxBottomY} (abaixo dos frames originais)`);
+      console.log(`📐 Base Y position calculated: ${maxBottomY} (below original frames)`);
 
-      // Para cada idioma (uma linha completa abaixo dos originais)
+      // For each language (one complete row below originals)
       for (let languageIndex = 0; languageIndex < msg.targetLanguages.length; languageIndex++) {
         const language = msg.targetLanguages[languageIndex];
         const translatedTexts = translationsByLanguage[language];
-        console.log(`⏱️ [${Date.now() - startTime}ms] Duplicando linha para idioma: ${language} (${languageIndex + 1}/${msg.targetLanguages.length})`);
+        console.log(`⏱️ [${Date.now() - startTime}ms] Duplicating row for language: ${language} (${languageIndex + 1}/${msg.targetLanguages.length})`);
 
-        // Calcular Y para esta linha de idioma
+        // Calculate Y for this language row
         const lineY = maxBottomY + spacingY + (languageIndex * (spacingY + Math.max(...selectedFrames.map(f => f.height))));
-        console.log(`📍 Linha ${languageIndex + 1} (${language}) posicionada em Y: ${lineY}`);
+        console.log(`📍 Row ${languageIndex + 1} (${language}) positioned at Y: ${lineY}`);
 
-        // Para cada frame original (manter a mesma posição X)
+        // For each original frame (maintain same X position)
         for (let frameIndex = 0; frameIndex < selectedFrames.length; frameIndex++) {
           const frameToDuplicate = selectedFrames[frameIndex];
           const frameStartTime = Date.now();
-          console.log(`📋 [${Date.now() - startTime}ms] Duplicando frame: "${frameToDuplicate.name}" para idioma: ${language} (${frameIndex + 1}/${selectedFrames.length})`);
+          console.log(`📋 [${Date.now() - startTime}ms] Duplicating frame: "${frameToDuplicate.name}" for language: ${language} (${frameIndex + 1}/${selectedFrames.length})`);
 
-          // a. Encontrar nós de texto originais ANTES de duplicar
+          // a. Find original text nodes BEFORE duplicating
           const originalTextNodes = frameToDuplicate.findAll(node => node.type === 'TEXT') as TextNode[];
 
-          // b. Duplicar o frame
+          // b. Duplicate the frame
           const cloneStartTime = Date.now();
           const duplicatedFrame = frameToDuplicate.clone();
-          console.log(`⚡ [${Date.now() - startTime}ms] Frame clonado em ${Date.now() - cloneStartTime}ms`);
+          console.log(`⚡ [${Date.now() - startTime}ms] Frame cloned in ${Date.now() - cloneStartTime}ms`);
 
-          // c. Posicionar frame duplicado: mesma X do original, Y calculado para a linha do idioma
-          duplicatedFrame.x = frameToDuplicate.x; // Manter alinhamento horizontal
-          duplicatedFrame.y = lineY; // Colocar na linha do idioma
+          // c. Position duplicated frame: same X as original, calculated Y for language row
+          duplicatedFrame.x = frameToDuplicate.x; // Maintain horizontal alignment
+          duplicatedFrame.y = lineY; // Place in language row
           
-          // Gerar nome do frame com base na nomenclatura de criativos
+          // Generate frame name based on creative nomenclature
           const newFrameName = generateFrameNameWithLanguage(frameToDuplicate.name, language);
           duplicatedFrame.name = newFrameName;
-          console.log(`📝 Nome do frame: "${frameToDuplicate.name}" -> "${newFrameName}"`);
+          console.log(`📝 Frame name: "${frameToDuplicate.name}" -> "${newFrameName}"`);
 
-          console.log(`📍 Frame posicionado em: X=${duplicatedFrame.x}, Y=${duplicatedFrame.y}`);
+          console.log(`📍 Frame positioned at: X=${duplicatedFrame.x}, Y=${duplicatedFrame.y}`);
 
-          // d. Adicionar o frame duplicado ao mesmo container do original
+          // d. Add duplicated frame to same container as original
           if (frameToDuplicate.parent) {
             frameToDuplicate.parent.appendChild(duplicatedFrame);
           }
           duplicatedFrames.push(duplicatedFrame);
 
-          // f. Encontrar todos os nós de texto dentro do novo frame duplicado
+          // f. Find all text nodes within the new duplicated frame
           const textNodesInDuplicated = duplicatedFrame.findAll(node => node.type === 'TEXT') as TextNode[];
-          console.log(`📝 ${textNodesInDuplicated.length} nó(s) de texto encontrado(s) no frame duplicado`);
+          console.log(`📝 ${textNodesInDuplicated.length} text node(s) found in duplicated frame`);
 
-          // g. Mapear e aplicar traduções com base na ordem dos nós
+          // g. Map and apply translations based on node order
           if (originalTextNodes.length === textNodesInDuplicated.length) {
             for (let i = 0; i < originalTextNodes.length; i++) {
               const originalNode = originalTextNodes[i];
@@ -282,41 +322,61 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
               const translatedContent = translatedTexts[originalNode.id];
 
               if (translatedContent) {
-                console.log(`🔄 Aplicando tradução ${language} para ID ${originalNode.id}: "${originalNode.characters}" -> "${translatedContent}"`);
+                console.log(`🔄 Applying ${language} translation for ID ${originalNode.id}: "${originalNode.characters}" -> "${translatedContent}"`);
                 try {
-                  // A fonte já foi carregada
-                  await figma.loadFontAsync(duplicatedNode.fontName as FontName);
+                  // Check if font is properly defined
+                  const currentFont = duplicatedNode.fontName as FontName;
+                  if (!currentFont || !currentFont.family || !currentFont.style) {
+                    throw new Error(`Invalid font: ${JSON.stringify(currentFont)}`);
+                  }
+                  
+                  // Font already loaded
+                  await figma.loadFontAsync(currentFont);
                   duplicatedNode.characters = translatedContent;
                 } catch (fontError) {
-                  console.log(`⚠️ Falha ao carregar fonte para o nó duplicado: ${fontError}. Usando fallback.`);
+                  const currentFont = duplicatedNode.fontName as FontName;
+                  const fontDisplay = (currentFont && currentFont.family && currentFont.style) 
+                    ? `${currentFont.family} ${currentFont.style}` 
+                    : `undefined font (${JSON.stringify(currentFont)})`;
+                  
+                  failedFonts.add(fontDisplay);
+                  console.log(`⚠️ Failed to load font for duplicated node: ${fontDisplay}. Using fallback.`);
                   try {
                     const fallbackFont: FontName = { family: "Inter", style: "Regular" };
                     await figma.loadFontAsync(fallbackFont);
                     duplicatedNode.fontName = fallbackFont;
                     duplicatedNode.characters = translatedContent;
                   } catch (fallbackError) {
-                    console.log(`❌ Falha total ao aplicar tradução para o nó ${originalNode.id}: ${fallbackError}`);
+                    console.log(`❌ Total failure applying translation for node ${originalNode.id}: ${fallbackError}`);
                   }
                 }
               } else {
-                console.log(`⚠️ Nenhuma tradução encontrada para o ID: ${originalNode.id} ("${originalNode.characters}") no idioma ${language}`);
+                console.log(`⚠️ No translation found for ID: ${originalNode.id} ("${originalNode.characters}") in language ${language}`);
               }
             }
           } else {
-            console.log(`❌ Erro: A contagem de nós de texto no frame original e duplicado não corresponde. Frame: "${frameToDuplicate.name}"`);
+            console.log(`❌ Error: Text node count in original and duplicated frame doesn't match. Frame: "${frameToDuplicate.name}"`);
           }
           
-          console.log(`✅ [${Date.now() - startTime}ms] Frame "${frameToDuplicate.name}" processado para ${language} em ${Date.now() - frameStartTime}ms`);
+          console.log(`✅ [${Date.now() - startTime}ms] Frame "${frameToDuplicate.name}" processed for ${language} in ${Date.now() - frameStartTime}ms`);
         }
         
-        console.log(`✅ [${Date.now() - startTime}ms] Linha do idioma ${language} concluída`);
+        console.log(`✅ [${Date.now() - startTime}ms] Language ${language} row completed`);
       }
-      console.log(`✅ [${Date.now() - startTime}ms] Passo 5 concluído: Duplicação em layout vertical finalizada`);
+      console.log(`✅ [${Date.now() - startTime}ms] Step 5 completed: Vertical layout duplication finished`);
 
-      // Passo 6: Finalizar e Notificar o Usuário
-      console.log(`⏱️ [${Date.now() - startTime}ms] Passo 6: Finalizando processo...`);
+      // Progress: finalization
+      figma.ui.postMessage({
+        type: 'progress',
+        message: `Finalizing process...`,
+        step: 4,
+        totalSteps: 4
+      } as ProgressMessage);
+
+      // Step 6: Finalize and Notify User
+      console.log(`⏱️ [${Date.now() - startTime}ms] Step 6: Finalizing process...`);
       if (duplicatedFrames.length > 0) {
-        // Atualizar seleção para mostrar os frames traduzidos
+        // Update selection to show translated frames
         figma.currentPage.selection = duplicatedFrames;
 
         figma.ui.postMessage({
@@ -325,11 +385,18 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
           originalText: JSON.stringify(textsForApi, null, 2)
         } as TranslationResponse);
 
-        figma.notify(`✅ Tradução concluída! ${duplicatedFrames.length} frame(s) criado(s) para ${msg.targetLanguages.length} idioma(s).`);
-        console.log(`🎉 [${Date.now() - startTime}ms] Processo finalizado com sucesso: ${duplicatedFrames.length} frame(s) traduzido(s) em grid organizado`);
-        console.log(`⏱️ TEMPO TOTAL: ${Date.now() - startTime}ms`);
+        // Smart notification based on font failures
+        if (failedFonts.size > 0) {
+          const fontList = Array.from(failedFonts).join(', ');
+          figma.notify(`✅ Translation completed! ${duplicatedFrames.length} frame(s) created, but some fonts failed: ${fontList}`, { error: false });
+        } else {
+          figma.notify(`✅ Translation completed! ${duplicatedFrames.length} frame(s) created for ${msg.targetLanguages.length} language(s).`);
+        }
+        
+        console.log(`🎉 [${Date.now() - startTime}ms] Process completed successfully: ${duplicatedFrames.length} frame(s) translated in organized grid`);
+        console.log(`⏱️ TOTAL TIME: ${Date.now() - startTime}ms`);
       } else {
-        throw new Error('Nenhum frame foi duplicado com sucesso');
+        throw new Error('No frame was successfully duplicated');
       }
       
     } catch (error) {
@@ -341,7 +408,7 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
   }
 };
 
-// Função para converter códigos de idioma para siglas em inglês
+// Function to convert language codes to English abbreviations
 function getLanguageCode(language: string): string {
   const languageMap: { [key: string]: string } = {
     // French
@@ -387,36 +454,36 @@ function getLanguageCode(language: string): string {
     'ru': 'RU'
   };
   
-  // Tentar encontrar correspondência direta ou por substring
+  // Try to find direct match or by substring
   const lowerLanguage = language.toLowerCase();
   return languageMap[lowerLanguage] || languageMap[language] || language.toUpperCase().substring(0, 2);
 }
 
-// Função para gerar nome do frame com base na nomenclatura de criativos
+// Function to generate frame name based on creative nomenclature
 function generateFrameNameWithLanguage(originalName: string, targetLanguage: string): string {
-  console.log(`🔍 Analisando nome original: "${originalName}"`);
+  console.log(`🔍 Analyzing original name: "${originalName}"`);
   
-  // Regex para encontrar padrões de língua no nome (2-3 letras maiúsculas isoladas)
+  // Regex to find language patterns in name (2-3 isolated uppercase letters)
   const languagePattern = /(_[A-Z]{2,3}_)|(_[A-Z]{2,3}$)/g;
   const matches = originalName.match(languagePattern);
   
   if (matches && matches.length > 0) {
-    // Pegar o último match (mais provável de ser a linguagem)
+    // Take the last match (most likely to be the language)
     const lastMatch = matches[matches.length - 1];
     const targetCode = getLanguageCode(targetLanguage);
     
-    console.log(`🔄 Substituindo "${lastMatch}" por "_${targetCode}_" ou "_${targetCode}"`);
+    console.log(`🔄 Replacing "${lastMatch}" with "_${targetCode}_" or "_${targetCode}"`);
     
-    // Se termina com underscore, manter o padrão
+    // If ends with underscore, maintain the pattern
     if (lastMatch.endsWith('_')) {
       return originalName.replace(lastMatch, `_${targetCode}_`);
     } else {
       return originalName.replace(lastMatch, `_${targetCode}`);
     }
   } else {
-    // Se não encontrou padrão de linguagem, adicionar no final
+    // If no language pattern found, add at the end
     const targetCode = getLanguageCode(targetLanguage);
-    console.log(`➕ Adicionando "_${targetCode}" ao final do nome`);
+    console.log(`➕ Adding "_${targetCode}" to end of name`);
     return `${originalName}_${targetCode}`;
   }
 }
@@ -430,25 +497,25 @@ async function translateTextsJson(texts: { [nodeId: string]: string }, targetLan
 
   const inputMessage = translationPrompt.getTranslationMessage(texts, targetLanguage);
 
-  // Log do texto que será enviado para a API
-  console.log(`📝 [API-${Date.now() - apiStartTime}ms] Texto reconhecido para tradução:`, JSON.stringify(texts, null, 2));
-  console.log(`📨 [API-${Date.now() - apiStartTime}ms] Mensagem completa para OpenAI:`, inputMessage);
+  // Log text that will be sent to API
+  console.log(`📝 [API-${Date.now() - apiStartTime}ms] Text recognized for translation:`, JSON.stringify(texts, null, 2));
+  console.log(`📨 [API-${Date.now() - apiStartTime}ms] Complete message for OpenAI:`, inputMessage);
 
   const requestBody = {
-    model: 'gpt-5-mini', // Modelo mais econômico para traduções
-    reasoning: { effort: 'low' }, // Pedido do usuário: usar reasoning com effort low
-    input: inputMessage, // String simples com "JSON" mencionado
-    // Responses API format correto
+    model: 'gpt-5-mini', // More economical model for translations
+    reasoning: { effort: 'low' }, // User request: use reasoning with low effort
+    input: inputMessage, // Simple string with "JSON" mentioned
+    // Correct Responses API format
     text: {
-      format: { type: "json_object" } // Correto: json_object (não json)
+      format: { type: "json_object" } // Correct: json_object (not json)
     }
   };
 
-  console.log(`📤 [API-${Date.now() - apiStartTime}ms] Preparando requisição para OpenAI (Responses API) com reasoning.low...`);
+  console.log(`📤 [API-${Date.now() - apiStartTime}ms] Preparing request for OpenAI (Responses API) with reasoning.low...`);
   console.log(`📤 [API-${Date.now() - apiStartTime}ms] Request body size:`, JSON.stringify(requestBody).length, 'chars');
 
   try {
-    console.log(`🌐 [API-${Date.now() - apiStartTime}ms] Enviando requisição para OpenAI Responses API...`);
+    console.log(`🌐 [API-${Date.now() - apiStartTime}ms] Sending request to OpenAI Responses API...`);
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -464,19 +531,32 @@ async function translateTextsJson(texts: { [nodeId: string]: string }, targetLan
     if (!response.ok) {
       const errorText = await response.text();
       console.log(`❌ [API-${Date.now() - apiStartTime}ms] Error response body:`, errorText);
-      throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+      
+      // More specific error messages
+      let userFriendlyError = `OpenAI API error (${response.status})`;
+      if (response.status === 401) {
+        userFriendlyError = 'Invalid API key. Please check your credentials.';
+      } else if (response.status === 429) {
+        userFriendlyError = 'Rate limit exceeded. Please try again in a few minutes.';
+      } else if (response.status >= 500) {
+        userFriendlyError = 'OpenAI server error. Please try again later.';
+      } else if (response.status === 400) {
+        userFriendlyError = 'Invalid request. Please check the data sent.';
+      }
+      
+      throw new Error(`${userFriendlyError}: ${errorText}`);
     }
 
     console.log(`📊 [API-${Date.now() - apiStartTime}ms] Parsing response JSON from Responses API...`);
     const data = await response.json() as any;
     console.log(`✅ [API-${Date.now() - apiStartTime}ms] GPT-5-MINI (Responses API) returned data keys:`, Object.keys(data));
 
-    // Extrair o conteúdo traduzido da Responses API
+    // Extract translated content from Responses API
     let translatedContentRaw: string | undefined = undefined;
 
-    // Responses API formato: data.output[1].content[0].text (segunda entrada é a message)
+    // Responses API format: data.output[1].content[0].text (second entry is usually the message)
     if (data.output && Array.isArray(data.output) && data.output.length > 1) {
-      const messageOutput = data.output[1]; // Segunda entrada é geralmente a message
+      const messageOutput = data.output[1]; // Second entry is usually the message
       if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content) && messageOutput.content.length > 0) {
         const contentItem = messageOutput.content[0];
         if (contentItem && contentItem.text) {
@@ -485,7 +565,7 @@ async function translateTextsJson(texts: { [nodeId: string]: string }, targetLan
       }
     }
 
-    // Fallback: tentar primeira entrada se segunda não funcionar
+    // Fallback: try first entry if second doesn't work
     if (!translatedContentRaw && data.output && Array.isArray(data.output) && data.output.length > 0) {
       const firstOutput = data.output[0];
       if (firstOutput && firstOutput.content && Array.isArray(firstOutput.content) && firstOutput.content.length > 0) {
