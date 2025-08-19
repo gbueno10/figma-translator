@@ -1,6 +1,48 @@
 // This is the main plugin code that runs in the Figma environment
 // It communicates with the UI through messages
 
+// Translation prompts - moved here for Figma compatibility
+class DefaultTranslationPrompt {
+  getTranslationMessage(texts: { [nodeId: string]: string }, targetLanguage: string): string {
+    return `You are a professional marketing translator.
+Translate the following validated advertising creatives for a dog training app into ${targetLanguage}, ensuring that the translation preserves the original impact and commercial effectiveness.
+
+Guidelines:
+
+Preserve the original meaning, persuasive tone, and intent.
+
+Keep the structure and approximate length (character/line count) where possible.
+
+Adapt idioms and cultural references so they sound natural in the target language, preferring words and phrases a native speaker would actually use.
+
+Do not add new concepts, benefits, or calls to action not present in the source.
+
+Use simple, clear vocabulary suitable for the target audience and advertising context.
+
+Always choose terms that maximize engagement and emotional resonance in the target language.
+
+Retain all original formatting (line breaks, bold, lists, etc.).
+
+Language-specific Do's & Don'ts:
+
+FR, ES, PT, IT, SE → Avoid mentioning "cage training", as it is not culturally accepted to keep dogs in cages.
+
+FR → Do not use "dressage" (commonly associated with circus); use "éducation" instead when referring to training.
+
+DE → Avoid using "Sie" (formal); always use "Du" (friendly/informal).
+
+Output requirements:
+
+Provide only the translated text, mirroring the input formatting exactly.
+
+Do not include explanations, notes, or additional context.
+
+Return the translated JSON with the same keys:\n${JSON.stringify(texts, null, 2)}`;
+  }
+}
+
+const translationPrompt = new DefaultTranslationPrompt();
+
 interface TranslationRequest {
   type: 'translate';
   text: string;
@@ -302,42 +344,47 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
 // Função para converter códigos de idioma para siglas em inglês
 function getLanguageCode(language: string): string {
   const languageMap: { [key: string]: string } = {
-    'pt-BR': 'PT',
-    'portuguese': 'PT',
-    'português': 'PT',
-    'en': 'EN',
-    'english': 'EN',
-    'inglês': 'EN',
-    'es': 'ES',
-    'spanish': 'ES',
-    'espanhol': 'ES',
-    'español': 'ES',
-    'fr': 'FR',
+    // French
     'french': 'FR',
-    'francês': 'FR',
-    'français': 'FR',
-    'de': 'DE',
+    'fr': 'FR',
+    
+    // German  
     'german': 'DE',
-    'alemão': 'DE',
-    'deutsch': 'DE',
-    'it': 'IT',
+    'de': 'DE',
+    
+    // Portuguese (Brazil)
+    'portuguese (br)': 'PT',
+    'portuguese': 'PT',
+    'pt-br': 'PT',
+    'pt': 'PT',
+    
+    // Portuguese (Portugal)
+    'portuguese (pt)': 'PT-PT',
+    'pt-pt': 'PT-PT',
+    
+    // Spanish
+    'spanish': 'ES',
+    'es': 'ES',
+    
+    // Italian
     'italian': 'IT',
-    'italiano': 'IT',
-    'ja': 'JP',
-    'japanese': 'JP',
-    'japonês': 'JP',
-    'ko': 'KR',
-    'korean': 'KR',
-    'coreano': 'KR',
-    'zh': 'CN',
-    'chinese': 'CN',
-    'chinês': 'CN',
-    'ru': 'RU',
-    'russian': 'RU',
-    'russo': 'RU',
-    'ar': 'AR',
+    'it': 'IT',
+    
+    // Dutch
+    'dutch': 'NL',
+    'nl': 'NL',
+    
+    // Polish
+    'polish': 'PL',
+    'pl': 'PL',
+    
+    // Arabic
     'arabic': 'AR',
-    'árabe': 'AR'
+    'ar': 'AR',
+    
+    // Russian
+    'russian': 'RU',
+    'ru': 'RU'
   };
   
   // Tentar encontrar correspondência direta ou por substring
@@ -377,18 +424,18 @@ function generateFrameNameWithLanguage(originalName: string, targetLanguage: str
 // Function to translate text using OpenAI API
 async function translateTextsJson(texts: { [nodeId: string]: string }, targetLanguage: string, apiKey: string): Promise<{ [nodeId: string]: string }> {
   const apiStartTime = Date.now();
-  console.log(`🚀 [API-${apiStartTime}] Starting JSON translation with GPT-5 for ${targetLanguage}...`);
+  console.log(`🚀 [API-${apiStartTime}] Starting JSON translation with GPT-5-MINI for ${targetLanguage}...`);
   console.log(`📝 [API-${Date.now() - apiStartTime}ms] Text objects count:`, Object.keys(texts).length);
   console.log(`🌍 [API-${Date.now() - apiStartTime}ms] Target language:`, targetLanguage);
 
-  const inputMessage = `Translate the following JSON object to ${targetLanguage}. Return the translated JSON with the same keys:\n${JSON.stringify(texts, null, 2)}`;
+  const inputMessage = translationPrompt.getTranslationMessage(texts, targetLanguage);
 
   // Log do texto que será enviado para a API
   console.log(`📝 [API-${Date.now() - apiStartTime}ms] Texto reconhecido para tradução:`, JSON.stringify(texts, null, 2));
   console.log(`📨 [API-${Date.now() - apiStartTime}ms] Mensagem completa para OpenAI:`, inputMessage);
 
   const requestBody = {
-    model: 'gpt-5', // Modelo de alta qualidade para traduções
+    model: 'gpt-5-mini', // Modelo mais econômico para traduções
     reasoning: { effort: 'low' }, // Pedido do usuário: usar reasoning com effort low
     input: inputMessage, // String simples com "JSON" mencionado
     // Responses API format correto
@@ -422,7 +469,7 @@ async function translateTextsJson(texts: { [nodeId: string]: string }, targetLan
 
     console.log(`📊 [API-${Date.now() - apiStartTime}ms] Parsing response JSON from Responses API...`);
     const data = await response.json() as any;
-    console.log(`✅ [API-${Date.now() - apiStartTime}ms] GPT-5 (Responses API) returned data keys:`, Object.keys(data));
+    console.log(`✅ [API-${Date.now() - apiStartTime}ms] GPT-5-MINI (Responses API) returned data keys:`, Object.keys(data));
 
     // Extrair o conteúdo traduzido da Responses API
     let translatedContentRaw: string | undefined = undefined;
