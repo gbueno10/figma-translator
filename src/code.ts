@@ -421,12 +421,13 @@ function getLanguageCode(language: string): string {
     
     // Portuguese (Brazil)
     'portuguese (br)': 'PT',
-    'portuguese': 'PT',
+    'brazilian portuguese': 'PT',
     'pt-br': 'PT',
     'pt': 'PT',
     
     // Portuguese (Portugal)
     'portuguese (pt)': 'PT-PT',
+    'portuguese': 'PT-PT',
     'pt-pt': 'PT-PT',
     
     // Spanish
