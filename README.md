@@ -1,139 +1,180 @@
-# 🌐 Figma Translator
+# 🌐 Figma Translator Plugin
 
-Um plugin do Figma que usa ChatGPT para traduzir elementos de texto de forma rápida e precisa.
+A powerful Figma plugin that uses OpenAI's GPT to translate text elements quickly and accurately. Perfect for designers working on multilingual projects!
 
-## ✨ Funcionalidades
+## ✨ Features
 
-- **Tradução Automática**: Traduz textos selecionados no Figma usando a API do OpenAI
-- **Múltiplos Idiomas**: Suporte para 10 idiomas incluindo os principais (EN, DE, FR) e outros idiomas para anúncios (ES, PT, IT, NL, PL, RU, AR)
-- **Texto Personalizado**: Permite traduzir texto customizado além dos elementos selecionados
-- **Interface Intuitiva**: UI limpa e fácil de usar
-- **Configurações Salvas**: Lembra suas preferências de idioma e chave API (armazenadas localmente)
+- **Automatic Translation**: Translates selected text in Figma using OpenAI API
+- **10 Languages Supported**: English, German, French, Spanish, Portuguese (Brazil & Portugal), Italian, Dutch, Polish, Russian, Arabic
+- **Duplicate & Translate**: Creates translated copies of your frames with proper language abbreviations
+- **User-Friendly Interface**: Clean and intuitive UI with progress indicators
+- **Secure**: API keys stored locally, no data collection
 
-## 🚀 Como Usar
+## 🚀 Quick Start Guide
 
-1. **Instalar o Plugin**:
-   - Abra o Figma
-   - Vá em `Plugins` → `Development` → `Import plugin from manifest`
-   - Selecione o arquivo `manifest.json` deste projeto
+### Step 1: Get an OpenAI API Key
 
-2. **Configurar a API**:
-   - Obtenha uma chave API do OpenAI em [platform.openai.com](https://platform.openai.com)
-   - Insira a chave no campo correspondente no plugin
+1. Go to [OpenAI Platform](https://platform.openai.com/account/api-keys)
+2. Sign in or create an account
+3. Click **"Create new secret key"**
+4. Copy the key (starts with `sk-...`)
+5. **Important**: Make sure you have credits in your OpenAI account
 
-3. **Traduzir Textos**:
-   - Selecione um ou mais elementos de texto no Figma
-   - Escolha o idioma de destino
-   - Clique em "Traduzir Seleção"
+### Step 2: Install the Plugin in Figma
 
-## 🛠️ Desenvolvimento
+#### Option A: Install from Figma Community (Recommended)
+1. Open Figma (desktop or web)
+2. Go to **Community** → **Plugins**
+3. Search for **"Figma Translator"**
+4. Click **"Install"**
 
-### Pré-requisitos
-- Node.js 16+
-- npm ou yarn
+#### Option B: Install from Source Code (For Developers)
+1. Download or clone this repository
+2. Open terminal/command prompt
+3. Navigate to the project folder
+4. Run: `npm install`
+5. Run: `npm run build`
+6. In Figma, go to **Plugins** → **Development** → **Import plugin from manifest**
+7. Select the `manifest.json` file from this project
 
-### Instalação
+### Step 3: Use the Plugin
+
+1. **Open the Plugin**:
+   - In Figma, go to **Plugins** → **Figma Translator**
+
+2. **Enter Your API Key**:
+   - Paste your OpenAI API key in the "API Key" field
+   - The key will be saved securely in your browser
+
+3. **Select Text Elements**:
+   - Select one or more text layers in your Figma design
+   - The plugin works with any text element
+
+4. **Choose Languages**:
+   - Check the boxes for languages you want to translate to
+   - You can select multiple languages at once
+
+5. **Translate**:
+   - Click **"Duplicate and Translate"**
+   - Watch the progress bar as translations are processed
+   - New frames will appear with translated text and language codes (e.g., "Frame - FR", "Frame - DE")
+
+## 🌍 Supported Languages
+
+| Language | Code | Example Frame Name |
+|----------|------|-------------------|
+| French | FR | "My Frame - FR" |
+| German | DE | "My Frame - DE" |
+| Spanish | ES | "My Frame - ES" |
+| Portuguese (Portugal) | PT-PT | "My Frame - PT-PT" |
+| Portuguese (Brazil) | PT | "My Frame - PT" |
+| Italian | IT | "My Frame - IT" |
+| Dutch | NL | "My Frame - NL" |
+| Polish | PL | "My Frame - PL" |
+| Russian | RU | "My Frame - RU" |
+| Arabic | AR | "My Frame - AR" |
+
+## � Pro Tips
+
+- **Select Multiple Elements**: You can select multiple text layers across different frames
+- **Batch Translation**: Select multiple target languages to create several translated versions at once
+- **Font Handling**: The plugin automatically handles missing fonts gracefully
+- **Frame Organization**: Translated frames are created next to your original frame for easy comparison
+
+## ⚠️ Requirements
+
+- **Figma Account**: Desktop or web version
+- **OpenAI Account**: With API access and available credits
+- **Internet Connection**: Required for API calls
+
+## � Troubleshooting
+
+### "Invalid API Key" Error
+- Double-check your OpenAI API key
+- Make sure it starts with `sk-`
+- Verify you have credits in your OpenAI account
+- Try generating a new API key
+
+### "Select at least one text element" Error
+- Make sure you've selected text layers (not shapes or images)
+- Text must be actual Figma text elements, not text in images
+
+### Plugin Won't Load
+- Try refreshing Figma
+- Check your internet connection
+- Make sure you're using the latest version of Figma
+
+### Translation Errors
+- Check your OpenAI account has sufficient credits
+- Some text might be too long (try shorter text)
+- Verify your API key hasn't expired
+
+### Fonts Look Different
+- The plugin preserves font families when possible
+- If a font isn't available, Figma will use a fallback font
+- This is normal behavior and doesn't affect functionality
+
+## 🔒 Privacy & Security
+
+- **Local Storage**: Your API key is stored only in your browser's local storage
+- **No Data Collection**: We don't collect, store, or share your designs or text
+- **Direct Connection**: The plugin connects directly to OpenAI's API
+- **Open Source**: All code is available for review in this repository
+
+## 🛠️ For Developers
+
+### Development Setup
 ```bash
+# Clone the repository
+git clone https://github.com/gbueno10/figma-translator.git
+
+# Install dependencies
 npm install
-```
 
-### Scripts Disponíveis
-```bash
-# Compilar uma vez
+# Build the plugin
 npm run build
 
-# Compilar em modo watch
+# Watch for changes during development
 npm run watch
-
-# Limpar arquivos compilados
-npm run clean
-
-# Modo desenvolvimento (limpa + watch)
-npm run dev
 ```
 
-### Estrutura do Projeto
+### Project Structure
 ```
 figma-translator/
 ├── src/
-│   └── code.ts          # Código principal do plugin
-├── ui.html              # Interface do usuário
-├── manifest.json        # Configurações do plugin
-├── tsconfig.json        # Configuração TypeScript
-└── package.json         # Dependências e scripts
+│   └── code.ts          # Main plugin logic
+├── ui.html              # User interface
+├── manifest.json        # Plugin configuration
+├── tsconfig.json        # TypeScript config
+└── package.json         # Dependencies
 ```
 
-## 🔧 Configuração
+## 📄 License
 
-### Manifest.json
-O arquivo `manifest.json` define as configurações do plugin:
-- Permissões de rede para a API OpenAI
-- Tipos de nós suportados (TEXT)
-- Informações básicas do plugin
+MIT License - see LICENSE file for details.
 
-### Segurança
-- ✅ Chaves API são armazenadas apenas localmente
-- ✅ Não há coleta de dados
-- ✅ Comunicação direta com a API OpenAI
+## 🤝 Contributing
 
-## 📝 Como Funciona
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-1. **Seleção**: O usuário seleciona elementos de texto no Figma
-2. **Comunicação**: A UI envia uma mensagem para o código principal com o texto e idioma
-3. **Tradução**: O código faz uma chamada para a API do ChatGPT
-4. **Aplicação**: O texto traduzido é aplicado aos elementos selecionados
-5. **Feedback**: O usuário recebe confirmação da tradução
+## 📞 Support
 
-## 🌍 Idiomas Suportados
+Need help? Here's how to get support:
 
-- **English (EN)** - Inglês
-- **German (DE)** - Alemão
-- **French (FR)** - Francês
-- **Spanish (ES)** - Espanhol
-- **Portuguese (PT)** - Português
-- **Brazilian Portuguese (PT-BR)** - Português Brasileiro
-- **Italian (IT)** - Italiano
-- **Dutch (NL)** - Holandês
-- **Polish (PL)** - Polonês
-- **Russian (RU)** - Russo
-- **Arabic (AR)** - Árabe
+1. **Check this README**: Most common issues are covered above
+2. **GitHub Issues**: [Open an issue](https://github.com/gbueno10/figma-translator/issues) for bugs or feature requests
+3. **Include Details**: When reporting issues, include:
+   - Your operating system
+   - Figma version (desktop/web)
+   - Error messages (if any)
+   - Steps to reproduce the problem
 
-## ⚠️ Requisitos
+---
 
-- Conta OpenAI com créditos disponíveis
-- Conexão com internet
-- Figma (versão desktop ou web)
+**Made with ❤️ by [gbueno10](https://github.com/gbueno10)**
 
-## 🐛 Solução de Problemas
-
-### "Erro na API do OpenAI"
-- Verifique se sua chave API está correta
-- Confirme se você tem créditos suficientes na conta OpenAI
-- Teste a chave em outras ferramentas OpenAI
-
-### "Selecione pelo menos um elemento de texto"
-- Certifique-se de que elementos TEXT estão selecionados
-- Apenas elementos de texto são suportados (não imagens ou shapes)
-
-### Plugin não carrega
-- Verifique se o arquivo `manifest.json` está na pasta raiz
-- Confirme se o projeto foi compilado (`npm run build`)
-
-## 📄 Licença
-
-MIT License - veja o arquivo LICENSE para detalhes.
-
-## 🤝 Contribuindo
-
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-## 📞 Suporte
-
-Se você encontrar problemas ou tiver sugestões, por favor:
-- Abra uma issue no GitHub
-- Descreva o problema em detalhes
-- Inclua informações sobre sua versão do Figma e sistema operacional
+*Happy translating! 🎨🌍*

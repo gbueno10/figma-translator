@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "main": "code.js",
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch"
+    "build": "tsc && npm run copy-files",
+    "copy-files": "cp manifest.json dist/ && cp ui.html dist/ && npm run fix-manifest",
+    "fix-manifest": "node -e \"const fs=require('fs'); const manifest=JSON.parse(fs.readFileSync('dist/manifest.json')); manifest.main='code.js'; fs.writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2));\"",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "dev": "npm run clean && npm run build && npm run watch"
   },
   "keywords": ["figma", "plugin", "translator", "chatgpt", "openai"],
   "author": "",

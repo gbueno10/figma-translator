@@ -332,7 +332,45 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
                   
                   // Font already loaded
                   await figma.loadFontAsync(currentFont);
-                  duplicatedNode.characters = translatedContent;
+                  
+                  // --- AUTO-FIT LOGIC STARTS HERE ---
+                  
+                  // 1. Check if font size is a number (not "mixed")
+                  if (typeof duplicatedNode.fontSize !== 'number') {
+                    console.log(`⚠️ Font size is mixed for node "${duplicatedNode.name}", skipping auto-fit.`);
+                    // If mixed, just apply the text without adjusting
+                    duplicatedNode.characters = translatedContent;
+                  } else {
+                    // 2. Store original text box properties
+                    const originalWidth = duplicatedNode.width;
+                    const originalHeight = duplicatedNode.height;
+                    const originalTextAutoResize = duplicatedNode.textAutoResize;
+                    let currentFontSize = duplicatedNode.fontSize;
+                    const MIN_FONT_SIZE = 8; // Minimum font size
+                    
+                    // 3. Apply the translated text
+                    duplicatedNode.characters = translatedContent;
+                    
+                    // 4. Temporarily change resize mode to measure overflow
+                    // This makes the text box grow to accommodate all content
+                    duplicatedNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+                    
+                    // 5. Loop to reduce font size if text overflows
+                    while (
+                      (duplicatedNode.width > originalWidth || duplicatedNode.height > originalHeight) &&
+                      currentFontSize > MIN_FONT_SIZE
+                    ) {
+                      currentFontSize--; // Reduce font size by 1px
+                      console.log(`[RESIZE] Text overflowed on "${duplicatedNode.name}". Reducing font size to ${currentFontSize}px`);
+                      duplicatedNode.fontSize = currentFontSize;
+                    }
+                    
+                    // 6. Restore original properties to ensure box returns to exact size
+                    duplicatedNode.textAutoResize = originalTextAutoResize;
+                    duplicatedNode.resize(originalWidth, originalHeight);
+                  }
+                  
+                  // --- AUTO-FIT LOGIC ENDS HERE ---
                 } catch (fontError) {
                   const currentFont = duplicatedNode.fontName as FontName;
                   const fontDisplay = (currentFont && currentFont.family && currentFont.style) 
@@ -345,7 +383,44 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
                     const fallbackFont: FontName = { family: "Inter", style: "Regular" };
                     await figma.loadFontAsync(fallbackFont);
                     duplicatedNode.fontName = fallbackFont;
-                    duplicatedNode.characters = translatedContent;
+                    
+                    // --- AUTO-FIT LOGIC FOR FALLBACK FONT ---
+                    
+                    // 1. Check if font size is a number (not "mixed")
+                    if (typeof duplicatedNode.fontSize !== 'number') {
+                      console.log(`⚠️ Font size is mixed for node "${duplicatedNode.name}", skipping auto-fit.`);
+                      // If mixed, just apply the text without adjusting
+                      duplicatedNode.characters = translatedContent;
+                    } else {
+                      // 2. Store original text box properties
+                      const originalWidth = duplicatedNode.width;
+                      const originalHeight = duplicatedNode.height;
+                      const originalTextAutoResize = duplicatedNode.textAutoResize;
+                      let currentFontSize = duplicatedNode.fontSize;
+                      const MIN_FONT_SIZE = 8; // Minimum font size
+                      
+                      // 3. Apply the translated text
+                      duplicatedNode.characters = translatedContent;
+                      
+                      // 4. Temporarily change resize mode to measure overflow
+                      duplicatedNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+                      
+                      // 5. Loop to reduce font size if text overflows
+                      while (
+                        (duplicatedNode.width > originalWidth || duplicatedNode.height > originalHeight) &&
+                        currentFontSize > MIN_FONT_SIZE
+                      ) {
+                        currentFontSize--; // Reduce font size by 1px
+                        console.log(`[RESIZE] Text overflowed on "${duplicatedNode.name}". Reducing font size to ${currentFontSize}px`);
+                        duplicatedNode.fontSize = currentFontSize;
+                      }
+                      
+                      // 6. Restore original properties
+                      duplicatedNode.textAutoResize = originalTextAutoResize;
+                      duplicatedNode.resize(originalWidth, originalHeight);
+                    }
+                    
+                    // --- AUTO-FIT LOGIC ENDS HERE ---
                   } catch (fallbackError) {
                     console.log(`❌ Total failure applying translation for node ${originalNode.id}: ${fallbackError}`);
                   }
@@ -517,11 +592,15 @@ async function translateTextsJson(texts: { [nodeId: string]: string }, targetLan
 
   try {
     console.log(`🌐 [API-${Date.now() - apiStartTime}ms] Sending request to OpenAI Responses API...`);
+    
+    // Ensure API key is clean and valid
+    const cleanApiKey = apiKey.trim().replace(/[^\x00-\x7F]/g, "");
+    
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${cleanApiKey}`
       },
       body: JSON.stringify(requestBody)
     });
