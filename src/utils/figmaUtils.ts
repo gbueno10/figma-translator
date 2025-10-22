@@ -156,7 +156,7 @@ export function generateFrameNameWithLanguage(originalName: string, targetLangua
 
 /**
  * Applies intelligent auto-fit logic to a text node to ensure text fits within original bounds
- * Uses "measure and adjust" strategy inspired by AI Design Assistant
+ * Uses adaptive binary search strategy for efficient and accurate text resizing
  * @param textNode - The text node to apply auto-fit to
  * @param translatedContent - The translated text content
  * @param minFontSize - Minimum font size threshold (default: 8)
@@ -173,50 +173,72 @@ export async function applyAutoFitText(
     return;
   }
 
-  // 2. Store original text box properties (the "photograph" of the box)
+  // 2. Store original text box properties
   const originalWidth = textNode.width;
   const originalHeight = textNode.height;
   const originalTextAutoResize = textNode.textAutoResize;
-  let currentFontSize = textNode.fontSize;
+  const originalFontSize = textNode.fontSize;
 
   // 3. Apply the translated text
   textNode.characters = translatedContent;
 
-  // 4. The Magic Step: Let the text "overflow" freely
-  // This tells Figma: "Expand this box to show all text"
-  // Now textNode.width and textNode.height represent the ACTUAL space the text needs
+  // 4. Temporarily change resize mode to measure overflow
   textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
 
-  // 5. The Adjustment Loop: Reduce font size until text fits
-  // Protection against infinite loops
-  let iterations = 0;
-  const maxIterations = 100;
+  // 5. Check if text fits at original size
+  const initialWidth = textNode.width;
+  const initialHeight = textNode.height;
+  
+  // Add a small tolerance (2px) to avoid unnecessary resizing for minor differences
+  const widthTolerance = 2;
+  const heightTolerance = 2;
+  
+  if (initialWidth <= originalWidth + widthTolerance && initialHeight <= originalHeight + heightTolerance) {
+    console.log(`✅ Text "${textNode.name}" fits at original size (${originalFontSize}px)`);
+    textNode.textAutoResize = originalTextAutoResize;
+    textNode.resize(originalWidth, originalHeight);
+    return;
+  }
 
-  while (
-    (textNode.width > originalWidth || textNode.height > originalHeight) &&
-    currentFontSize > minFontSize &&
-    iterations < maxIterations
-  ) {
-    currentFontSize--; // Reduce font size by 1px
-    textNode.fontSize = currentFontSize;
+  console.log(`📏 Text "${textNode.name}" overflows: ${initialWidth.toFixed(1)}x${initialHeight.toFixed(1)} vs ${originalWidth}x${originalHeight}`);
+
+  // 6. Use binary search for efficient font size finding
+  let minSize = minFontSize;
+  let maxSize = originalFontSize;
+  let bestFitSize = minFontSize;
+  let iterations = 0;
+  const maxIterations = 20; // Safety limit
+
+  while (minSize <= maxSize && iterations < maxIterations) {
     iterations++;
-    
-    if (iterations % 5 === 0) { // Log every 5 iterations to avoid spam
-      console.log(`[RESIZE] Iteration ${iterations}: Adjusting "${textNode.name}" to ${currentFontSize}px (W: ${Math.round(textNode.width)}/${Math.round(originalWidth)}, H: ${Math.round(textNode.height)}/${Math.round(originalHeight)})`);
+    const midSize = Math.floor((minSize + maxSize) / 2);
+    textNode.fontSize = midSize;
+
+    const currentWidth = textNode.width;
+    const currentHeight = textNode.height;
+
+    // Check if text fits with current size
+    if (currentWidth <= originalWidth + widthTolerance && currentHeight <= originalHeight + heightTolerance) {
+      // Text fits! Try a larger size
+      bestFitSize = midSize;
+      minSize = midSize + 1;
+      console.log(`✓ Size ${midSize}px fits (${currentWidth.toFixed(1)}x${currentHeight.toFixed(1)})`);
+    } else {
+      // Text doesn't fit, try smaller
+      maxSize = midSize - 1;
+      console.log(`✗ Size ${midSize}px too large (${currentWidth.toFixed(1)}x${currentHeight.toFixed(1)})`);
     }
   }
 
-  // Log final result
-  if (currentFontSize < textNode.fontSize) {
-    console.log(`✅ [RESIZE] "${textNode.name}" adjusted from ${textNode.fontSize}px to ${currentFontSize}px to fit within bounds`);
-  }
+  // 7. Apply the best fit size found
+  textNode.fontSize = bestFitSize;
+  
+  const finalReduction = originalFontSize - bestFitSize;
+  const reductionPercentage = ((finalReduction / originalFontSize) * 100).toFixed(1);
+  
+  console.log(`🎯 [RESIZE] "${textNode.name}": ${originalFontSize}px → ${bestFitSize}px (-${finalReduction}px, -${reductionPercentage}%) in ${iterations} iterations`);
 
-  // Warn if we hit the minimum
-  if (currentFontSize <= minFontSize) {
-    console.log(`⚠️ [RESIZE] Reached minimum font size (${minFontSize}px) for "${textNode.name}". Text may overflow.`);
-  }
-
-  // 6. Restore Original Properties (back to original form)
+  // 8. Restore original properties
   textNode.textAutoResize = originalTextAutoResize;
   textNode.resize(originalWidth, originalHeight);
 }
