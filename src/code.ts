@@ -9,6 +9,7 @@ interface TranslationRequest {
   text: string;
   targetLanguages: string[];
   apiKey: string;
+  autoTextResize?: boolean;
 }
 
 interface LoadSettingsRequest {
@@ -19,12 +20,14 @@ interface SaveSettingsRequest {
   type: 'save-settings';
   apiKey: string;
   targetLanguages: string[];
+  autoTextResize?: boolean;
 }
 
 interface SettingsResponse {
   type: 'settings-loaded';
   apiKey: string;
   targetLanguages: string[];
+  autoTextResize: boolean;
 }
 
 interface TranslationResponse {
@@ -55,11 +58,14 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       const apiKey = await figma.clientStorage.getAsync('figma-translator-api-key') || '';
       const targetLanguagesString = await figma.clientStorage.getAsync('figma-translator-languages') || '';
       const targetLanguages = targetLanguagesString ? JSON.parse(targetLanguagesString) : ['pt-BR'];
+      const storedAutoResize = await figma.clientStorage.getAsync('figma-translator-auto-text-resize');
+      const autoTextResize = typeof storedAutoResize === 'boolean' ? storedAutoResize : true;
       
       figma.ui.postMessage({
         type: 'settings-loaded',
         apiKey,
-        targetLanguages
+        targetLanguages,
+        autoTextResize
       } as SettingsResponse);
       
       console.log('✅ Settings LOADED from Figma storage');
@@ -72,6 +78,9 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
     try {
       await figma.clientStorage.setAsync('figma-translator-api-key', msg.apiKey);
       await figma.clientStorage.setAsync('figma-translator-languages', JSON.stringify(msg.targetLanguages));
+      if (typeof msg.autoTextResize === 'boolean') {
+        await figma.clientStorage.setAsync('figma-translator-auto-text-resize', msg.autoTextResize);
+      }
       console.log('✅ Settings SAVED to Figma storage');
     } catch (error) {
       console.log('❌ ERROR saving settings:', error);
@@ -88,7 +97,10 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
         figma.currentPage.selection,
         msg.targetLanguages,
         msg.apiKey,
-        startTime
+        startTime,
+        {
+          autoTextResize: msg.autoTextResize !== false
+        }
       );
       
     } catch (error) {

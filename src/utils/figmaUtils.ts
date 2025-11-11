@@ -112,7 +112,11 @@ export function getLanguageCode(language: string): string {
     
     // Russian
     'russian': 'RU',
-    'ru': 'RU'
+    'ru': 'RU',
+
+    // Hungarian
+    'hungarian': 'HU',
+    'hu': 'HU'
   };
 
   // Try to find direct match or by substring
@@ -151,5 +155,192 @@ export function generateFrameNameWithLanguage(originalName: string, targetLangua
     const targetCode = getLanguageCode(targetLanguage);
     console.log(`➕ Adding "_${targetCode}" to end of name`);
     return `${originalName}_${targetCode}`;
+  }
+}
+
+/**
+ * Applies translated text to a node and auto-fits it within the original bounds using binary search
+ * while respecting the node's original auto-resize behavior.
+ * @param textNode - Text node to update
+ * @param translatedContent - New text content to apply
+ */
+export async function applyAutoFitText(textNode: TextNode, translatedContent: string): Promise<void> {
+  if (!translatedContent) {
+    return;
+  }
+
+  const originalWidth = textNode.width;
+  const originalHeight = textNode.height;
+  const originalTextAutoResize = textNode.textAutoResize;
+  const baselineFontSize = getBaselineFontSize(textNode);
+  const minFontSize = 8;
+  let minSize = minFontSize;
+  let maxSize = Math.max(Math.round(baselineFontSize * 2), 200);
+  let bestFitSize = minFontSize;
+
+  const fontsToLoad = collectFontsFromNode(textNode);
+  await Promise.all(fontsToLoad.map(font => figma.loadFontAsync(font)));
+
+  const probeNode = textNode.clone();
+  probeNode.visible = false;
+  probeNode.opacity = 0.01;
+  probeNode.characters = translatedContent;
+
+  try {
+    configureProbeAutoResize(probeNode, originalTextAutoResize, originalWidth);
+
+    while (minSize <= maxSize) {
+      const midSize = Math.floor((minSize + maxSize) / 2);
+      setUniformFontSize(probeNode, midSize);
+      enforceProbeWidth(probeNode, originalTextAutoResize, originalWidth);
+
+      if (fitsOriginalBounds(probeNode, originalWidth, originalHeight)) {
+        bestFitSize = midSize;
+        minSize = midSize + 1;
+      } else {
+        maxSize = midSize - 1;
+      }
+    }
+
+    textNode.characters = translatedContent;
+    setUniformFontSize(textNode, bestFitSize);
+    restoreNodeSizing(textNode, originalTextAutoResize, originalWidth, originalHeight);
+  } finally {
+    probeNode.remove();
+  }
+}
+
+/**
+ * Applies translated text without resizing logic, only ensuring fonts are loaded.
+ */
+export async function applyTextWithoutAutoResize(textNode: TextNode, translatedContent: string): Promise<void> {
+  if (!translatedContent) {
+    return;
+  }
+
+  const fontsToLoad = collectFontsFromNode(textNode);
+  await Promise.all(fontsToLoad.map(font => figma.loadFontAsync(font)));
+  textNode.characters = translatedContent;
+}
+
+function collectFontsFromNode(textNode: TextNode): FontName[] {
+  if (textNode.fontName !== figma.mixed) {
+    return [textNode.fontName as FontName];
+  }
+
+  if (textNode.characters.length === 0) {
+    return [];
+  }
+
+  const segments = textNode.getStyledTextSegments(['fontName']);
+  const uniqueFonts = new Map<string, FontName>();
+
+  for (const segment of segments) {
+    const font = segment.fontName as FontName;
+    const key = `${font.family}-${font.style}`;
+    if (!uniqueFonts.has(key)) {
+      uniqueFonts.set(key, font);
+    }
+  }
+
+  return Array.from(uniqueFonts.values());
+}
+
+function getBaselineFontSize(textNode: TextNode): number {
+  if (typeof textNode.fontSize === 'number') {
+    return textNode.fontSize;
+  }
+
+  const segments = textNode.getStyledTextSegments(['fontSize']);
+  for (const segment of segments) {
+    if (typeof segment.fontSize === 'number') {
+      return segment.fontSize;
+    }
+  }
+
+  return 16;
+}
+
+function setUniformFontSize(node: TextNode, size: number): void {
+  if (node.characters.length === 0) {
+    return;
+  }
+
+  if (typeof node.fontSize === 'number') {
+    node.fontSize = size;
+  } else {
+    node.setRangeFontSize(0, node.characters.length, size);
+  }
+}
+
+function configureProbeAutoResize(
+  probeNode: TextNode,
+  originalAutoResize: TextAutoResize,
+  originalWidth: number
+): void {
+  if (originalAutoResize === 'WIDTH_AND_HEIGHT') {
+    probeNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+    return;
+  }
+
+  probeNode.textAutoResize = 'HEIGHT';
+  enforceProbeWidth(probeNode, 'HEIGHT', originalWidth);
+}
+
+function enforceProbeWidth(
+  probeNode: TextNode,
+  originalAutoResize: TextAutoResize,
+  originalWidth: number
+): void {
+  if (originalAutoResize === 'WIDTH_AND_HEIGHT') {
+    return;
+  }
+
+  try {
+    const height = probeNode.height || 1;
+    probeNode.resize(originalWidth, height);
+  } catch (error) {
+    console.log(`⚠️ Unable to enforce width on probe node ${probeNode.id}:`, error);
+  }
+}
+
+function fitsOriginalBounds(
+  probeNode: TextNode,
+  originalWidth: number,
+  originalHeight: number
+): boolean {
+  const tolerance = 0.5;
+  const widthFits = probeNode.width <= originalWidth + tolerance;
+  const heightFits = probeNode.height <= originalHeight + tolerance;
+  return widthFits && heightFits;
+}
+
+function restoreNodeSizing(
+  textNode: TextNode,
+  originalAutoResize: TextAutoResize,
+  originalWidth: number,
+  originalHeight: number
+): void {
+  if (originalAutoResize === 'WIDTH_AND_HEIGHT') {
+    textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+    return;
+  }
+
+  if (originalAutoResize === 'HEIGHT') {
+    textNode.textAutoResize = 'HEIGHT';
+    try {
+      textNode.resize(originalWidth, textNode.height);
+    } catch (error) {
+      console.log(`⚠️ Unable to restore width for node ${textNode.id}:`, error);
+    }
+
+    return;
+  }
+
+  textNode.textAutoResize = 'NONE';
+  try {
+    textNode.resize(originalWidth, originalHeight);
+  } catch (error) {
+    console.log(`⚠️ Unable to restore fixed size for node ${textNode.id}:`, error);
   }
 }

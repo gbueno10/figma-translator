@@ -2,7 +2,11 @@
 // Handles the main logic for translation: finding nodes, duplicating frames, mapping IDs, and applying translations
 
 import { translateTextsJson } from '../services/openaiService';
-import { loadFontsFromNodes, extractTextsFromFrames, generateFrameNameWithLanguage } from '../utils/figmaUtils';
+import { loadFontsFromNodes, extractTextsFromFrames, generateFrameNameWithLanguage, applyAutoFitText, applyTextWithoutAutoResize } from '../utils/figmaUtils';
+
+interface TranslationOptions {
+  autoTextResize: boolean;
+}
 
 interface ProgressMessage {
   type: 'progress';
@@ -22,8 +26,15 @@ export async function handleTranslation(
   selectedNodes: readonly SceneNode[],
   targetLanguages: string[],
   apiKey: string,
-  startTime: number
+  startTime: number,
+  options?: Partial<TranslationOptions>
 ): Promise<void> {
+  const mergedOptions: TranslationOptions = {
+    autoTextResize: options?.autoTextResize !== false
+  };
+
+  console.log(`⚙️ Auto text resize: ${mergedOptions.autoTextResize ? 'ENABLED' : 'DISABLED'}`);
+
   // Step 1: Validate Selection
   console.log(`⏱️ [${Date.now() - startTime}ms] Step 1: Starting selection capture...`);
   
@@ -118,7 +129,8 @@ export async function handleTranslation(
     selectedFrames,
     targetLanguages,
     translationsByLanguage,
-    startTime
+    startTime,
+    mergedOptions
   );
 }
 
@@ -133,7 +145,8 @@ async function duplicateAndApplyTranslations(
   selectedFrames: (FrameNode | ComponentNode | InstanceNode)[],
   targetLanguages: string[],
   translationsByLanguage: { [language: string]: { [id: string]: string } },
-  startTime: number
+  startTime: number,
+  options: TranslationOptions
 ): Promise<void> {
   console.log(`⏱️ [${Date.now() - startTime}ms] Step 5: Starting vertical layout duplication...`);
   
@@ -209,36 +222,35 @@ async function duplicateAndApplyTranslations(
         console.log(`🔄 Applying ${language} translation for ID ${originalId}: "${translatedContent}"`);
 
         if (translatedContent) {
-          try {
-            // Load font
-            const currentFont = duplicatedNode.fontName as FontName;
-            if (!currentFont || !currentFont.family || !currentFont.style) {
-              throw new Error(`Invalid font: ${JSON.stringify(currentFont)}`);
+          const applyTranslation = async () => {
+            if (options.autoTextResize) {
+              await applyAutoFitText(duplicatedNode, translatedContent);
+            } else {
+              await applyTextWithoutAutoResize(duplicatedNode, translatedContent);
             }
+          };
 
-            await figma.loadFontAsync(currentFont);
-
-            // Apply translated text directly
-            duplicatedNode.characters = translatedContent;
-
+          try {
+            await applyTranslation();
           } catch (fontError) {
-            // Fallback to Inter
-            const currentFont = duplicatedNode.fontName as FontName;
-            const fontDisplay = (currentFont && currentFont.family && currentFont.style)
-              ? `${currentFont.family} ${currentFont.style}`
-              : `undefined font`;
+            const currentFont = duplicatedNode.fontName;
+            const fontDisplay = (currentFont !== figma.mixed && (currentFont as FontName)?.family)
+              ? `${(currentFont as FontName).family} ${(currentFont as FontName).style}`
+              : 'mixed font';
 
             failedFonts.add(fontDisplay);
-            console.log(`⚠️ Failed to load font: ${fontDisplay}. Using fallback.`);
+            console.log(`⚠️ Failed to load font: ${fontDisplay}. Using fallback.`, fontError);
 
             try {
               const fallbackFont: FontName = { family: "Inter", style: "Regular" };
               await figma.loadFontAsync(fallbackFont);
-              duplicatedNode.fontName = fallbackFont;
+              if (duplicatedNode.characters.length > 0) {
+                duplicatedNode.setRangeFontName(0, duplicatedNode.characters.length, fallbackFont);
+              } else {
+                duplicatedNode.fontName = fallbackFont;
+              }
 
-              // Apply translated text directly (with fallback font)
-              duplicatedNode.characters = translatedContent;
-
+              await applyTranslation();
             } catch (fallbackError) {
               console.log(`❌ Total failure applying translation for node ID ${originalId}: ${fallbackError}`);
             }

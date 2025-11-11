@@ -233,6 +233,19 @@
                     <label class="language-option">
                         <input type="checkbox" name="targetLanguages" value="Arabic"> Arabic (AR)
                     </label>
+                    <label class="language-option">
+                        <input type="checkbox" name="targetLanguages" value="Hungarian"> Hungarian (HU)
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="language-option" style="margin-bottom: 0; border: none; padding: 0;">
+                    <input type="checkbox" id="autoTextResize" checked style="width: auto; margin-right: 8px;">
+                    Enable auto text resize (beta)
+                </label>
+                <div class="api-key-info">
+                    Automatically adjusts the font size so the translation fits the original box.
                 </div>
             </div>
 
@@ -258,13 +271,15 @@
             const apiKey = document.getElementById('apiKey').value;
             const targetLanguages = Array.from(document.querySelectorAll('input[name="targetLanguages"]:checked'))
                 .map(checkbox => checkbox.value);
+            const autoTextResize = document.getElementById('autoTextResize').checked;
             
             // Send to main code to save in Figma storage
             parent.postMessage({
                 pluginMessage: {
                     type: 'save-settings',
                     apiKey: apiKey,
-                    targetLanguages: targetLanguages
+                    targetLanguages: targetLanguages,
+                    autoTextResize
                 }
             }, '*');
             
@@ -292,6 +307,7 @@
             const apiKey = document.getElementById('apiKey').value;
             const targetLanguages = Array.from(document.querySelectorAll('input[name="targetLanguages"]:checked'))
                 .map(checkbox => checkbox.value);
+            const autoTextResize = document.getElementById('autoTextResize').checked;
 
             if (!apiKey || targetLanguages.length === 0) {
                 showResult('Please fill in the API key and select at least one target language.', 'error');
@@ -316,7 +332,8 @@
                     type: 'translate',
                     text: '', // Field removed from UI, sending empty string
                     targetLanguages: targetLanguages,
-                    apiKey: apiKey
+                    apiKey: apiKey,
+                    autoTextResize
                 }
             }, '*');
         });
@@ -346,6 +363,10 @@
                     console.log('✅ Languages LOADED from Figma storage:', msg.targetLanguages);
                 } else {
                     console.log('⚠️ No saved languages found');
+                }
+
+                if (typeof msg.autoTextResize === 'boolean') {
+                    document.getElementById('autoTextResize').checked = msg.autoTextResize;
                 }
             }
             else if (msg.type === 'progress') {
