@@ -2,7 +2,7 @@
 // Handles the main logic for translation: finding nodes, duplicating frames, mapping IDs, and applying translations
 
 import { translateTextsJson } from '../services/openaiService';
-import { loadFontsFromNodes, extractTextsFromFrames, generateFrameNameWithLanguage, applyAutoFitText } from '../utils/figmaUtils';
+import { loadFontsFromNodes, extractTextsFromFrames, generateFrameNameWithLanguage } from '../utils/figmaUtils';
 
 interface ProgressMessage {
   type: 'progress';
@@ -218,8 +218,8 @@ async function duplicateAndApplyTranslations(
 
             await figma.loadFontAsync(currentFont);
 
-            // Apply auto-fit text
-            await applyAutoFitText(duplicatedNode, translatedContent);
+            // Apply translated text directly
+            duplicatedNode.characters = translatedContent;
 
           } catch (fontError) {
             // Fallback to Inter
@@ -236,8 +236,8 @@ async function duplicateAndApplyTranslations(
               await figma.loadFontAsync(fallbackFont);
               duplicatedNode.fontName = fallbackFont;
 
-              // Apply auto-fit with fallback font
-              await applyAutoFitText(duplicatedNode, translatedContent);
+              // Apply translated text directly (with fallback font)
+              duplicatedNode.characters = translatedContent;
 
             } catch (fallbackError) {
               console.log(`❌ Total failure applying translation for node ID ${originalId}: ${fallbackError}`);
