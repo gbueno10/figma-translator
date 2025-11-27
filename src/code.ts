@@ -10,6 +10,7 @@ interface TranslationRequest {
   targetLanguages: string[];
   apiKey: string;
   autoTextResize?: boolean;
+  dualAutoTextResize?: boolean;
 }
 
 interface LoadSettingsRequest {
@@ -21,6 +22,7 @@ interface SaveSettingsRequest {
   apiKey: string;
   targetLanguages: string[];
   autoTextResize?: boolean;
+  dualAutoTextResize?: boolean;
 }
 
 interface SettingsResponse {
@@ -28,6 +30,7 @@ interface SettingsResponse {
   apiKey: string;
   targetLanguages: string[];
   autoTextResize: boolean;
+  dualAutoTextResize: boolean;
 }
 
 interface TranslationResponse {
@@ -59,13 +62,16 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       const targetLanguagesString = await figma.clientStorage.getAsync('figma-translator-languages') || '';
       const targetLanguages = targetLanguagesString ? JSON.parse(targetLanguagesString) : ['pt-BR'];
       const storedAutoResize = await figma.clientStorage.getAsync('figma-translator-auto-text-resize');
+      const storedDualAutoResize = await figma.clientStorage.getAsync('figma-translator-dual-auto-text-resize');
       const autoTextResize = typeof storedAutoResize === 'boolean' ? storedAutoResize : true;
+      const dualAutoTextResize = storedDualAutoResize === true;
       
       figma.ui.postMessage({
         type: 'settings-loaded',
         apiKey,
         targetLanguages,
-        autoTextResize
+        autoTextResize,
+        dualAutoTextResize
       } as SettingsResponse);
       
       console.log('✅ Settings LOADED from Figma storage');
@@ -80,6 +86,9 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
       await figma.clientStorage.setAsync('figma-translator-languages', JSON.stringify(msg.targetLanguages));
       if (typeof msg.autoTextResize === 'boolean') {
         await figma.clientStorage.setAsync('figma-translator-auto-text-resize', msg.autoTextResize);
+      }
+      if (typeof msg.dualAutoTextResize === 'boolean') {
+        await figma.clientStorage.setAsync('figma-translator-dual-auto-text-resize', msg.dualAutoTextResize);
       }
       console.log('✅ Settings SAVED to Figma storage');
     } catch (error) {
@@ -99,7 +108,8 @@ figma.ui.onmessage = async (msg: TranslationRequest | LoadSettingsRequest | Save
         msg.apiKey,
         startTime,
         {
-          autoTextResize: msg.autoTextResize !== false
+          autoTextResize: msg.autoTextResize !== false,
+          dualAutoTextResize: msg.dualAutoTextResize === true
         }
       );
       

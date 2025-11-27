@@ -6,6 +6,7 @@ import { loadFontsFromNodes, extractTextsFromFrames, generateFrameNameWithLangua
 
 interface TranslationOptions {
   autoTextResize: boolean;
+  dualAutoTextResize: boolean;
 }
 
 interface ProgressMessage {
@@ -30,10 +31,12 @@ export async function handleTranslation(
   options?: Partial<TranslationOptions>
 ): Promise<void> {
   const mergedOptions: TranslationOptions = {
-    autoTextResize: options?.autoTextResize !== false
+    autoTextResize: options?.autoTextResize !== false,
+    dualAutoTextResize: options?.dualAutoTextResize === true
   };
 
   console.log(`⚙️ Auto text resize: ${mergedOptions.autoTextResize ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`⚙️ Dual auto text resize mode: ${mergedOptions.dualAutoTextResize ? 'ENABLED' : 'DISABLED'}`);
 
   // Step 1: Validate Selection
   console.log(`⏱️ [${Date.now() - startTime}ms] Step 1: Starting selection capture...`);
@@ -148,22 +151,38 @@ async function duplicateAndApplyTranslations(
   startTime: number,
   options: TranslationOptions
 ): Promise<void> {
-  console.log(`⏱️ [${Date.now() - startTime}ms] Step 5: Starting vertical layout duplication...`);
+  console.log(`⏱️ [${Date.now() - startTime}ms] Step 5: Starting layout duplication...`);
   
   const duplicatedFrames: SceneNode[] = [];
   const spacingY = 100;
+  const spacingX = 100;
+  const minX = Math.min(...selectedFrames.map(frame => frame.x));
+  const minY = Math.min(...selectedFrames.map(frame => frame.y));
+  const maxRight = Math.max(...selectedFrames.map(frame => frame.x + frame.width));
+  const maxBottom = Math.max(...selectedFrames.map(frame => frame.y + frame.height));
+  const selectionWidth = maxRight - minX;
+  const selectionHeight = maxBottom - minY;
   const failedFonts = new Set<string>();
+  const columnOffset = selectionWidth + spacingX;
+  const baseLineY = maxBottom + spacingY;
 
-  // Calculate base Y position
-  const maxBottomY = Math.max(...selectedFrames.map(frame => frame.y + frame.height));
-  console.log(`📐 Base Y position calculated: ${maxBottomY}`);
+  console.log(`📐 Base Y position calculated: ${baseLineY}`);
+  console.log(`📐 Column offset for dual mode: ${columnOffset}`);
+  console.log(`📐 Selection width/height: ${selectionWidth} x ${selectionHeight}`);
+
+  const variants = options.dualAutoTextResize
+    ? [
+        { label: 'AUTO', autoTextResize: true, columnIndex: 0 },
+        { label: 'FIXED', autoTextResize: false, columnIndex: 1 }
+      ]
+    : [{ label: options.autoTextResize ? 'AUTO' : 'FIXED', autoTextResize: options.autoTextResize, columnIndex: 0 }];
 
   // For each language
   for (let languageIndex = 0; languageIndex < targetLanguages.length; languageIndex++) {
     const language = targetLanguages[languageIndex];
     const translatedTexts = translationsByLanguage[language];
     
-    const lineY = maxBottomY + spacingY + (languageIndex * (spacingY + Math.max(...selectedFrames.map(f => f.height))));
+    const lineY = baseLineY + (languageIndex * (spacingY + selectionHeight));
 
     // For each frame
     for (const frameToDuplicate of selectedFrames) {
@@ -173,86 +192,90 @@ async function duplicateAndApplyTranslations(
       const originalTextNodes = frameToDuplicate.findAll((node: SceneNode) => node.type === 'TEXT') as TextNode[];
       console.log(`📝 Found ${originalTextNodes.length} text node(s) in original frame "${frameToDuplicate.name}"`);
 
-      // Duplicate the frame
-      const duplicatedFrame = frameToDuplicate.clone();
+      for (const variant of variants) {
+        // Duplicate the frame
+        const duplicatedFrame = frameToDuplicate.clone();
 
-      // Position duplicated frame
-      duplicatedFrame.x = frameToDuplicate.x;
-      duplicatedFrame.y = lineY;
+        // Position duplicated frame
+        duplicatedFrame.x = frameToDuplicate.x + (variant.columnIndex * columnOffset);
+        duplicatedFrame.y = lineY + (frameToDuplicate.y - minY);
 
-      // Generate frame name
-      const newFrameName = generateFrameNameWithLanguage(frameToDuplicate.name, language);
-      duplicatedFrame.name = newFrameName;
-      console.log(`📝 Frame name: "${frameToDuplicate.name}" -> "${newFrameName}"`);
+        // Generate frame name
+        const baseFrameName = generateFrameNameWithLanguage(frameToDuplicate.name, language);
+        const variantSuffix = options.dualAutoTextResize ? (variant.autoTextResize ? ' - auto' : ' - no-resize') : '';
+        const newFrameName = `${baseFrameName}${variantSuffix}`;
+        duplicatedFrame.name = newFrameName;
+        console.log(`📝 Frame name: "${frameToDuplicate.name}" -> "${newFrameName}"`);
 
-      // Add to parent
-      if (frameToDuplicate.parent) {
-        frameToDuplicate.parent.appendChild(duplicatedFrame);
-      }
-      duplicatedFrames.push(duplicatedFrame);
-
-      // Find cloned text nodes
-      const clonedTextNodes = duplicatedFrame.findAll((node: SceneNode) => node.type === 'TEXT') as TextNode[];
-
-      // Create ID mapping: Original Node ID -> Cloned Node Object
-      const idToClonedNodeMap = new Map<string, TextNode>();
-      
-      if (originalTextNodes.length === clonedTextNodes.length) {
-        for (let i = 0; i < originalTextNodes.length; i++) {
-          const originalId = originalTextNodes[i].id;
-          const clonedNode = clonedTextNodes[i];
-          idToClonedNodeMap.set(originalId, clonedNode);
-          console.log(`🔗 Mapped original ID ${originalId} to cloned node`);
+        // Add to parent
+        if (frameToDuplicate.parent) {
+          frameToDuplicate.parent.appendChild(duplicatedFrame);
         }
-        console.log(`✅ Created ID mapping for ${idToClonedNodeMap.size} text nodes`);
-      } else {
-        console.log(`⚠️ Warning: Node count mismatch! Original: ${originalTextNodes.length}, Cloned: ${clonedTextNodes.length}`);
-      }
+        duplicatedFrames.push(duplicatedFrame);
 
-      // Apply translations using ID mapping
-      for (const originalId in translatedTexts) {
-        const translatedContent = translatedTexts[originalId];
-        const duplicatedNode = idToClonedNodeMap.get(originalId);
+        // Find cloned text nodes
+        const clonedTextNodes = duplicatedFrame.findAll((node: SceneNode) => node.type === 'TEXT') as TextNode[];
 
-        if (!duplicatedNode) {
-          console.log(`⚠️ Warning: No cloned node found for original ID ${originalId}`);
-          continue;
+        // Create ID mapping: Original Node ID -> Cloned Node Object
+        const idToClonedNodeMap = new Map<string, TextNode>();
+        
+        if (originalTextNodes.length === clonedTextNodes.length) {
+          for (let i = 0; i < originalTextNodes.length; i++) {
+            const originalId = originalTextNodes[i].id;
+            const clonedNode = clonedTextNodes[i];
+            idToClonedNodeMap.set(originalId, clonedNode);
+            console.log(`🔗 Mapped original ID ${originalId} to cloned node`);
+          }
+          console.log(`✅ Created ID mapping for ${idToClonedNodeMap.size} text nodes`);
+        } else {
+          console.log(`⚠️ Warning: Node count mismatch! Original: ${originalTextNodes.length}, Cloned: ${clonedTextNodes.length}`);
         }
 
-        console.log(`🔄 Applying ${language} translation for ID ${originalId}: "${translatedContent}"`);
+        // Apply translations using ID mapping
+        for (const originalId in translatedTexts) {
+          const translatedContent = translatedTexts[originalId];
+          const duplicatedNode = idToClonedNodeMap.get(originalId);
 
-        if (translatedContent) {
-          const applyTranslation = async () => {
-            if (options.autoTextResize) {
-              await applyAutoFitText(duplicatedNode, translatedContent);
-            } else {
-              await applyTextWithoutAutoResize(duplicatedNode, translatedContent);
-            }
-          };
+          if (!duplicatedNode) {
+            console.log(`⚠️ Warning: No cloned node found for original ID ${originalId}`);
+            continue;
+          }
 
-          try {
-            await applyTranslation();
-          } catch (fontError) {
-            const currentFont = duplicatedNode.fontName;
-            const fontDisplay = (currentFont !== figma.mixed && (currentFont as FontName)?.family)
-              ? `${(currentFont as FontName).family} ${(currentFont as FontName).style}`
-              : 'mixed font';
+          console.log(`🔄 Applying ${language} translation (${variant.label}) for ID ${originalId}: "${translatedContent}"`);
 
-            failedFonts.add(fontDisplay);
-            console.log(`⚠️ Failed to load font: ${fontDisplay}. Using fallback.`, fontError);
+          if (translatedContent) {
+            const applyTranslation = async () => {
+              if (variant.autoTextResize) {
+                await applyAutoFitText(duplicatedNode, translatedContent);
+              } else {
+                await applyTextWithoutAutoResize(duplicatedNode, translatedContent);
+              }
+            };
 
             try {
-              const fallbackFont: FontName = { family: "Inter", style: "Regular" };
-              await figma.loadFontAsync(fallbackFont);
-              if (duplicatedNode.characters.length > 0) {
-                duplicatedNode.setRangeFontName(0, duplicatedNode.characters.length, fallbackFont);
-              } else {
-                duplicatedNode.fontName = fallbackFont;
-              }
-
               await applyTranslation();
-            } catch (fallbackError) {
-              console.log(`❌ Total failure applying translation for node ID ${originalId}: ${fallbackError}`);
+            } catch (fontError) {
+              const currentFont = duplicatedNode.fontName;
+              const fontDisplay = (currentFont !== figma.mixed && (currentFont as FontName)?.family)
+                ? `${(currentFont as FontName).family} ${(currentFont as FontName).style}`
+                : 'mixed font';
+
+              failedFonts.add(fontDisplay);
+              console.log(`⚠️ Failed to load font: ${fontDisplay}. Using fallback.`, fontError);
+
+              try {
+                const fallbackFont: FontName = { family: "Inter", style: "Regular" };
+                await figma.loadFontAsync(fallbackFont);
+                if (duplicatedNode.characters.length > 0) {
+                  duplicatedNode.setRangeFontName(0, duplicatedNode.characters.length, fallbackFont);
+                } else {
+                  duplicatedNode.fontName = fallbackFont;
+                }
+
+                await applyTranslation();
+              } catch (fallbackError) {
+                console.log(`❌ Total failure applying translation for node ID ${originalId}: ${fallbackError}`);
+              }
             }
           }
         }

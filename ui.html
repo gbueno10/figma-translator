@@ -249,6 +249,16 @@
                 </div>
             </div>
 
+            <div class="form-group">
+                <label class="language-option" style="margin-bottom: 0; border: none; padding: 0;">
+                    <input type="checkbox" id="dualAutoTextResize" style="width: auto; margin-right: 8px;">
+                    Create auto-resize ON and OFF side by side
+                </label>
+                <div class="api-key-info">
+                    Duplicates each language twice in the same row: auto-resize enabled on the left and disabled on the right.
+                </div>
+            </div>
+
             <button type="submit" id="translateBtn">
                 Duplicate and Translate
             </button>
@@ -272,6 +282,7 @@
             const targetLanguages = Array.from(document.querySelectorAll('input[name="targetLanguages"]:checked'))
                 .map(checkbox => checkbox.value);
             const autoTextResize = document.getElementById('autoTextResize').checked;
+            const dualAutoTextResize = document.getElementById('dualAutoTextResize').checked;
             
             // Send to main code to save in Figma storage
             parent.postMessage({
@@ -279,7 +290,8 @@
                     type: 'save-settings',
                     apiKey: apiKey,
                     targetLanguages: targetLanguages,
-                    autoTextResize
+                    autoTextResize,
+                    dualAutoTextResize
                 }
             }, '*');
             
@@ -308,6 +320,7 @@
             const targetLanguages = Array.from(document.querySelectorAll('input[name="targetLanguages"]:checked'))
                 .map(checkbox => checkbox.value);
             const autoTextResize = document.getElementById('autoTextResize').checked;
+            const dualAutoTextResize = document.getElementById('dualAutoTextResize').checked;
 
             if (!apiKey || targetLanguages.length === 0) {
                 showResult('Please fill in the API key and select at least one target language.', 'error');
@@ -329,12 +342,13 @@
             // Send message to main code
             parent.postMessage({
                 pluginMessage: {
-                    type: 'translate',
-                    text: '', // Field removed from UI, sending empty string
-                    targetLanguages: targetLanguages,
-                    apiKey: apiKey,
-                    autoTextResize
-                }
+                type: 'translate',
+                text: '', // Field removed from UI, sending empty string
+                targetLanguages: targetLanguages,
+                apiKey: apiKey,
+                autoTextResize,
+                dualAutoTextResize
+            }
             }, '*');
         });
 
@@ -367,6 +381,9 @@
 
                 if (typeof msg.autoTextResize === 'boolean') {
                     document.getElementById('autoTextResize').checked = msg.autoTextResize;
+                }
+                if (typeof msg.dualAutoTextResize === 'boolean') {
+                    document.getElementById('dualAutoTextResize').checked = msg.dualAutoTextResize;
                 }
             }
             else if (msg.type === 'progress') {

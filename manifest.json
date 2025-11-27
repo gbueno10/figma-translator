@@ -1,6 +1,6 @@
 {
   "name": "Figma Translator",
-  "id": "1539714404492291171",
+  "id": "1542561285821502783",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "ui.html",
